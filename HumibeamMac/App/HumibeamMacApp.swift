@@ -94,6 +94,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         DispatchQueue.main.async { [weak self] in
             self?.showOnboardingIfNeeded()
+            self?.sessions.restoreSessions()
         }
     }
 

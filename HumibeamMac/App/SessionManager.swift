@@ -25,6 +25,50 @@ final class SessionManager: NSObject, NSWindowDelegate {
         super.init()
     }
 
+    // MARK: - Persistence (restore open sessions on next launch)
+
+    private struct SessionDescriptor: Codable {
+        var kind: String          // "local" | "ssh" | "files"
+        var hostID: UUID?
+    }
+    @ObservationIgnored private let restoreKey = "humibeam.openSessions"
+    @ObservationIgnored private var restoring = false
+
+    private func persistOpenSessions() {
+        guard !restoring else { return }
+        var list: [SessionDescriptor] = localSessions.map { _ in SessionDescriptor(kind: "local", hostID: nil) }
+        list += shell.tabs.filter { windows[$0.id] != nil }.map { SessionDescriptor(kind: "ssh", hostID: $0.host.id) }
+        list += fileSessions.filter { windows[$0.id] != nil }.map { SessionDescriptor(kind: "files", hostID: $0.host.id) }
+        if let data = try? JSONEncoder().encode(list) {
+            UserDefaults.standard.set(data, forKey: restoreKey)
+        }
+    }
+
+    /// Reopens the sessions that were open at the last quit. Called once at launch.
+    func restoreSessions() {
+        guard let data = UserDefaults.standard.data(forKey: restoreKey),
+              let list = try? JSONDecoder().decode([SessionDescriptor].self, from: data),
+              !list.isEmpty else { return }
+        restoring = true
+        for d in list {
+            switch d.kind {
+            case "local":
+                openLocalSession()
+            case "ssh":
+                if let id = d.hostID, let host = shell.hostStore.hosts.first(where: { $0.id == id }) {
+                    openSSHSession(host)
+                }
+            case "files":
+                if let id = d.hostID, let host = shell.hostStore.hosts.first(where: { $0.id == id }) {
+                    openFileSession(host)
+                }
+            default: break
+            }
+        }
+        restoring = false
+        persistOpenSessions()
+    }
+
     // MARK: - Unified list for the topbar
 
     struct ActiveSession: Identifiable {
@@ -215,6 +259,7 @@ final class SessionManager: NSObject, NSWindowDelegate {
         }
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        persistOpenSessions()
     }
 
     // MARK: - NSWindowDelegate
@@ -241,6 +286,7 @@ final class SessionManager: NSObject, NSWindowDelegate {
             fileSessions.remove(at: index)
         }
 
+        persistOpenSessions()
         // Back to a pure menu-bar app once the last window is gone.
         if !anyWindowOpen { NSApp.setActivationPolicy(.accessory) }
     }
