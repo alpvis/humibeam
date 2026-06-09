@@ -11,9 +11,32 @@ final class HumibeamShell {
     let knownHosts = KnownHostsStore()
     let snippets = SnippetStore()
     let bookmarks = BookmarkStore()
+    let network = NetworkMonitor()
 
     var tabs: [TerminalTab] = []
     var selectedTabID: UUID?
+
+    init() {
+        network.onChange = { [weak self] online in self?.handleNetworkChange(online) }
+    }
+
+    /// Propagates reachability changes to every session: pause reconnects when offline,
+    /// reconnect immediately when the link returns.
+    private func handleNetworkChange(_ online: Bool) {
+        for tab in tabs {
+            if online {
+                tab.controller.networkBecameAvailable()
+                tab.splitController?.networkBecameAvailable()
+            } else {
+                tab.controller.networkBecameUnavailable()
+                tab.splitController?.networkBecameUnavailable()
+                if !tab.connected {
+                    tab.health = .offline
+                    tab.status = "offline – warte auf Netz…"
+                }
+            }
+        }
+    }
 
     var terminalFontSize: CGFloat = 13 {
         didSet { forEachController { $0.setFontSize(terminalFontSize) } }
@@ -69,17 +92,32 @@ final class HumibeamShell {
     func connect(to host: SSHHost) -> TerminalTab? {
         let controller = TerminalSessionController(knownHosts: knownHosts)
         configure(controller)
+        controller.primeNetwork(network.isOnline)
         let tab = TerminalTab(host: host, controller: controller)
 
-        controller.onStatus = { [weak tab] in tab?.status = $0 }
+        controller.onStatus = { [weak tab] in
+            guard let tab else { return }
+            tab.status = $0
+            let s = $0.lowercased()
+            if s.contains("offline") { tab.health = .offline }
+            else if s.contains("reconnect") { tab.health = .reconnecting }
+        }
         controller.onConnected = { [weak self, weak tab] in
             guard let tab else { return }
             tab.connected = true
+            tab.health = .connected
+            // Drop any stale borrowed file session so it re-binds to the fresh connection.
+            tab.fileSession?.disconnect()
+            tab.fileSession = nil
             Task { await self?.loadInitialBrowserPath(tab) }
         }
         controller.onClosed = { [weak tab] in
-            tab?.connected = false
-            tab?.status = "Verbindung geschlossen."
+            guard let tab else { return }
+            tab.connected = false
+            tab.health = .closed
+            tab.status = "Verbindung geschlossen."
+            tab.fileSession?.disconnect()
+            tab.fileSession = nil
         }
         controller.onClaudeDetected = { [weak tab] in tab?.claudeDetected = true }
         controller.onApprovalChange = { [weak tab, weak controller] in
@@ -141,6 +179,7 @@ final class HumibeamShell {
         }
         let controller = TerminalSessionController(knownHosts: knownHosts)
         configure(controller)
+        controller.primeNetwork(network.isOnline)
         controller.onStatus = { [weak tab] in tab?.splitStatus = $0 }
         tab.splitController = controller
         do { controller.connect(try hostStore.credentials(for: tab.host)) }

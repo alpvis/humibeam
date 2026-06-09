@@ -2,18 +2,25 @@ import SwiftUI
 import AppKit
 import SwiftTerm
 
-/// The humibeam main window: hosts sidebar + tabbed terminals + per-tab file browser.
-struct MainView: View {
+// MARK: - Main window (single-window "Studio" layout)
+
+/// humibeam's single main window: a sidebar (profiles + active sessions) on the left and the
+/// selected session on the right, with a Terminal | Dateien | Split switcher in its own toolbar.
+struct MainWindowView: View {
     @Bindable var shell: HumibeamShell
-    @State private var selection: UUID?
+    @Bindable var sessions: SessionManager
     @State private var editingHost: SSHHost?
     @State private var showingEditor = false
 
     var body: some View {
         NavigationSplitView {
-            sidebar
+            SidebarView(shell: shell, sessions: sessions,
+                        editHost: { editingHost = $0; showingEditor = true },
+                        newHost: { editingHost = nil; showingEditor = true })
+            .navigationSplitViewColumnWidth(min: 232, ideal: 256, max: 340)
         } detail: {
-            detail
+            DetailHost(shell: shell, sessions: sessions,
+                       newHost: { editingHost = nil; showingEditor = true })
         }
         .sheet(isPresented: $showingEditor) {
             HostEditorView(host: editingHost ?? SSHHost()) { saved in
@@ -25,109 +32,173 @@ struct MainView: View {
             }
         }
     }
+}
 
-    // MARK: Sidebar
+// MARK: - Sidebar
 
-    private var sidebar: some View {
-        List(selection: $selection) {
-            Section("Verbindungen") {
+struct SidebarView: View {
+    @Bindable var shell: HumibeamShell
+    @Bindable var sessions: SessionManager
+    var editHost: (SSHHost) -> Void
+    var newHost: () -> Void
+
+    var body: some View {
+        List {
+            Section("Profile") {
+                if shell.hostStore.hosts.isEmpty {
+                    Text("Noch keine Profile")
+                        .font(.callout).foregroundStyle(.tertiary)
+                }
                 ForEach(shell.hostStore.hosts) { host in
-                    HostRow(host: host, connected: shell.tabs.contains { $0.host.id == host.id && $0.connected })
-                        .tag(host.id)
-                        .contextMenu {
-                            Button("Verbinden") { shell.connect(to: host) }
-                            Button("Bearbeiten") { editingHost = host; showingEditor = true }
-                            Divider()
-                            Button("Löschen", role: .destructive) { shell.hostStore.delete(host) }
+                    ProfileRow(host: host,
+                               connected: shell.tabs.contains { $0.host.id == host.id && $0.connected })
+                    .contentShape(Rectangle())
+                    .onTapGesture { sessions.openSSHSession(host) }
+                    .contextMenu {
+                        Button("Terminal verbinden") { sessions.openSSHSession(host) }
+                        Button("Dateien öffnen") { sessions.openFileSession(host) }
+                        Divider()
+                        Button("Bearbeiten…") { editHost(host) }
+                        Button("Löschen", role: .destructive) { shell.hostStore.delete(host) }
+                    }
+                }
+            }
+
+            if !sessions.activeSessions.isEmpty {
+                Section("Sitzungen") {
+                    ForEach(sessions.activeSessions) { s in
+                        SessionRow(session: s, selected: sessions.selectedSessionID == s.id)
+                            .contentShape(Rectangle())
+                            .onTapGesture { sessions.select(s.id) }
+                            .contextMenu {
+                                Button("Schließen", role: .destructive) { sessions.close(s.id) }
+                            }
+                    }
+                }
+            }
+        }
+        .listStyle(.sidebar)
+        .safeAreaInset(edge: .bottom) { bottomBar }
+    }
+
+    private var bottomBar: some View {
+        HStack(spacing: 8) {
+            Menu {
+                Button("Lokales Terminal", systemImage: "apple.terminal") { sessions.openLocalSession() }
+                if !shell.hostStore.hosts.isEmpty {
+                    Divider()
+                    Section("Verbinden") {
+                        ForEach(shell.hostStore.hosts) { host in
+                            Button(host.displayName) { sessions.openSSHSession(host) }
                         }
-                        .onTapGesture(count: 2) { shell.connect(to: host) }
+                    }
                 }
-            }
-        }
-        .frame(minWidth: 230)
-        .toolbar {
-            ToolbarItemGroup {
-                Button { editingHost = nil; showingEditor = true } label: { Image(systemName: "plus") }
-                    .help("Neue Verbindung")
-                Button { shell.hostStore.importSSHConfig() } label: { Image(systemName: "square.and.arrow.down.on.square") }
-                    .help("~/.ssh/config importieren")
-            }
-        }
-        .safeAreaInset(edge: .bottom) {
-            if let host = shell.hostStore.hosts.first(where: { $0.id == selection }) {
-                Button { shell.connect(to: host) } label: {
-                    Label("Verbinden", systemImage: "bolt.horizontal.fill").frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .padding(8)
-            }
-        }
-    }
-
-    // MARK: Detail
-
-    @ViewBuilder
-    private var detail: some View {
-        if shell.hasTabs {
-            VStack(spacing: 0) {
-                TabBar(shell: shell)
                 Divider()
-                if let tab = shell.selectedTab {
-                    TabContent(shell: shell, tab: tab)
-                }
+                Button("Neues Profil…", systemImage: "plus") { newHost() }
+            } label: {
+                Label("Neu", systemImage: "plus.circle.fill")
             }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+
+            Spacer()
+
+            Button { sessions.toggleCommandPalette() } label: {
+                Image(systemName: "command")
+            }
+            .buttonStyle(.borderless)
+            .help("Befehls-Palette (⌘K)")
+
+            Button { sessions.openSettingsHub() } label: {
+                Image(systemName: "gearshape")
+            }
+            .buttonStyle(.borderless)
+            .help("Einstellungen")
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(.bar)
+    }
+}
+
+private struct ProfileRow: View {
+    let host: SSHHost
+    let connected: Bool
+    var body: some View {
+        HStack(spacing: 9) {
+            Image(systemName: connected ? "bolt.horizontal.circle.fill" : "server.rack")
+                .foregroundStyle(connected ? Color.green : Color.secondary)
+                .frame(width: 18)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(host.displayName).font(.body)
+                Text("\(host.username)@\(host.host)").font(.caption2).foregroundStyle(.secondary)
+                    .lineLimit(1).truncationMode(.middle)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+private struct SessionRow: View {
+    let session: SessionManager.ActiveSession
+    let selected: Bool
+    var body: some View {
+        HStack(spacing: 9) {
+            Circle().fill(Color(nsColor: session.health.color)).frame(width: 8, height: 8)
+            Image(systemName: session.symbol).foregroundStyle(.secondary).frame(width: 16)
+            Text(session.title).font(.body).lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 3).padding(.horizontal, 6)
+        .background(selected ? Color.accentColor.opacity(0.18) : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 6))
+    }
+}
+
+// MARK: - Detail host (resolves the selected session)
+
+private struct DetailHost: View {
+    @Bindable var shell: HumibeamShell
+    @Bindable var sessions: SessionManager
+    var newHost: () -> Void
+
+    var body: some View {
+        if let id = sessions.selectedSessionID,
+           let tab = shell.tabs.first(where: { $0.id == id }) {
+            SessionDetailView(shell: shell, sessions: sessions, tab: tab).id(tab.id)
+        } else if let id = sessions.selectedSessionID,
+                  let local = sessions.localSessions.first(where: { $0.id == id }) {
+            LocalDetailView(session: local).id(local.id)
         } else {
-            emptyState
+            EmptyStateView(shell: shell, sessions: sessions, newHost: newHost)
         }
     }
+}
 
-    private var emptyState: some View {
+private struct EmptyStateView: View {
+    @Bindable var shell: HumibeamShell
+    @Bindable var sessions: SessionManager
+    var newHost: () -> Void
+
+    var body: some View {
         VStack(spacing: 18) {
-            BrandMark(size: 60)
-
+            BrandMark(size: 56)
             VStack(spacing: 6) {
                 Text("humibeam").font(.system(size: 26, weight: .bold))
-                Text("Steuere Claude Code auf deinem Server — per Terminal, Screenshot-Paste (⌘V) und Sprache.")
+                Text("Der SSH-Client für agentische CLIs. Profil wählen — Terminal, Dateien und Screenshot-Paste laufen über dieselbe Verbindung.")
                     .font(.callout).foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center).frame(maxWidth: 420)
+                    .multilineTextAlignment(.center).frame(maxWidth: 440)
             }
-
             if shell.hostStore.hosts.isEmpty {
-                Button { editingHost = nil; showingEditor = true } label: {
-                    Label("Erste Verbindung anlegen", systemImage: "plus")
-                        .frame(minWidth: 220)
+                Button { newHost() } label: {
+                    Label("Erstes Profil anlegen", systemImage: "plus").frame(minWidth: 200)
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
+                .buttonStyle(.borderedProminent).controlSize(.large)
             } else {
-                VStack(spacing: 8) {
-                    Text("Verbinden")
-                        .font(.caption).fontWeight(.semibold)
-                        .foregroundStyle(.secondary)
-                    ForEach(shell.hostStore.hosts) { host in
-                        Button { shell.connect(to: host) } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: "server.rack").foregroundStyle(.tint)
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(host.displayName).font(.body).fontWeight(.medium)
-                                    Text("\(host.username)@\(host.host):\(host.port)")
-                                        .font(.caption2).foregroundStyle(.secondary)
-                                }
-                                Spacer(minLength: 16)
-                                Image(systemName: "bolt.horizontal.fill").foregroundStyle(.green)
-                            }
-                            .frame(width: 320)
-                            .padding(.vertical, 4)
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.large)
-                    }
-                    Button { editingHost = nil; showingEditor = true } label: {
-                        Label("Neue Verbindung", systemImage: "plus").font(.callout)
-                    }
-                    .buttonStyle(.borderless)
-                    .padding(.top, 2)
+                Button { sessions.openLocalSession() } label: {
+                    Label("Lokales Terminal öffnen", systemImage: "apple.terminal").frame(minWidth: 200)
                 }
+                .buttonStyle(.bordered).controlSize(.large)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -135,100 +206,80 @@ struct MainView: View {
     }
 }
 
-// MARK: - Tab bar
+// MARK: - SSH session detail
 
-private struct TabBar: View {
+private struct SessionDetailView: View {
     @Bindable var shell: HumibeamShell
-    var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 2) {
-                ForEach(shell.tabs) { tab in
-                    let active = shell.selectedTabID == tab.id
-                    HStack(spacing: 6) {
-                        Circle().fill(tab.connected ? .green : .secondary).frame(width: 7, height: 7)
-                        Text(tab.title).font(.callout).lineLimit(1)
-                        Button { shell.closeTab(tab) } label: { Image(systemName: "xmark").font(.caption2) }
-                            .buttonStyle(.borderless)
-                    }
-                    .padding(.horizontal, 10).padding(.vertical, 6)
-                    .background(active ? Color.accentColor.opacity(0.18) : Color.clear)
-                    .clipShape(RoundedRectangle(cornerRadius: 7))
-                    .contentShape(Rectangle())
-                    .onTapGesture { shell.selectedTabID = tab.id }
-                }
-            }
-            .padding(.horizontal, 6).padding(.vertical, 4)
-        }
-        .background(.bar)
-    }
-}
-
-// MARK: - Tab content
-
-private struct TabContent: View {
-    @Bindable var shell: HumibeamShell
+    @Bindable var sessions: SessionManager
     @Bindable var tab: TerminalTab
-    var onClose: () -> Void = {}
     @State private var isFullscreen = false
 
     var body: some View {
         VStack(spacing: 0) {
             if !isFullscreen {
-                TerminalToolbar(shell: shell, tab: tab, onClose: onClose)
+                SessionToolbar(shell: shell, sessions: sessions, tab: tab)
                 Divider()
             }
             if tab.searchVisible {
-                SearchBar(tab: tab)
-                Divider()
+                SearchBar(tab: tab); Divider()
             }
             if tab.awaitingApproval {
-                approvalBar
-                Divider()
+                approvalBar; Divider()
             }
-            terminals
-                .padding(12)
-                .frame(minWidth: 480, minHeight: 300)
-            if tab.showFileBrowser {
-                Divider()
-                FileBrowserView(shell: shell, tab: tab).frame(height: 250)
-            }
-            if !isFullscreen {
-                statusBar
-            }
+            content
+            if !isFullscreen { statusBar }
         }
         .background(Color.black)
         .background(FullscreenReader(isFullscreen: $isFullscreen))
+        .onChange(of: tab.mode) { _, mode in handleModeChange(mode) }
         .sheet(isPresented: $tab.showAIPanel) { AIPanel(tab: tab) }
         .sheet(isPresented: $tab.showEditor) { RemoteEditor(shell: shell, tab: tab) }
         .sheet(isPresented: $tab.showForwards) { ForwardsSheet(shell: shell, tab: tab) }
     }
 
     @ViewBuilder
-    private var terminals: some View {
-        if let split = tab.splitController {
+    private var content: some View {
+        switch tab.mode {
+        case .terminal:
+            TerminalRepresentable(controller: tab.controller)
+                .padding(10).frame(minWidth: 480, minHeight: 300)
+        case .split:
             HSplitView {
                 TerminalRepresentable(controller: tab.controller)
-                TerminalRepresentable(controller: split)
+                if let split = tab.splitController {
+                    TerminalRepresentable(controller: split)
+                }
             }
-        } else {
-            TerminalRepresentable(controller: tab.controller)
+            .padding(10).frame(minWidth: 480, minHeight: 300)
+        case .files:
+            FilesPane(shell: shell, sessions: sessions, tab: tab)
+                .frame(minWidth: 480, minHeight: 300)
+        }
+    }
+
+    private func handleModeChange(_ mode: SessionMode) {
+        switch mode {
+        case .split:
+            if tab.splitController == nil { shell.toggleSplit(tab) }
+        case .files:
+            if tab.browserFiles.isEmpty { Task { await shell.refreshBrowser(tab) } }
+            if tab.splitController != nil { shell.toggleSplit(tab) }
+        case .terminal:
+            if tab.splitController != nil { shell.toggleSplit(tab) }
         }
     }
 
     private var approvalBar: some View {
         HStack(spacing: 10) {
             Image(systemName: "hand.raised.fill").foregroundStyle(.orange)
-            Text("Claude möchte etwas ausführen — erlauben?")
-                .font(.callout).fontWeight(.medium)
+            Text("Claude möchte etwas ausführen — erlauben?").font(.callout).fontWeight(.medium)
             Spacer()
-            Button("Ablehnen") { tab.controller.deny() }
-                .keyboardShortcut(.cancelAction)
+            Button("Ablehnen") { tab.controller.deny() }.keyboardShortcut(.cancelAction)
             if tab.approvalAllowAlways {
                 Button("Immer erlauben") { tab.controller.approveAlways() }
             }
             Button("Erlauben") { tab.controller.approve() }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
         .background(Color.orange.opacity(0.12))
@@ -236,7 +287,7 @@ private struct TabContent: View {
 
     private var statusBar: some View {
         HStack(spacing: 8) {
-            Circle().fill(tab.connected ? Color.green : Color.secondary).frame(width: 8, height: 8)
+            Circle().fill(Color(nsColor: tab.health.color)).frame(width: 8, height: 8)
             Text(tab.status).font(.caption).foregroundStyle(.secondary)
             Spacer()
             if shell.broadcastInput {
@@ -245,6 +296,272 @@ private struct TabContent: View {
             }
         }
         .padding(.horizontal, 10).padding(.vertical, 5).background(.bar)
+    }
+}
+
+// MARK: - Professional session toolbar
+
+private struct SessionToolbar: View {
+    @Bindable var shell: HumibeamShell
+    @Bindable var sessions: SessionManager
+    @Bindable var tab: TerminalTab
+    @State private var showSuggest = false
+    @State private var fillSnippet: Snippet?
+    @State private var fillValues: [String: String] = [:]
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Leading: identity + health + Claude badge
+            HStack(spacing: 8) {
+                Circle().fill(Color(nsColor: tab.health.color)).frame(width: 9, height: 9)
+                Text(tab.host.displayName).font(.headline).lineLimit(1)
+                if tab.claudeDetected {
+                    Label("Claude Code", systemImage: "sparkles")
+                        .font(.caption2).foregroundStyle(.purple)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Color.purple.opacity(0.12), in: Capsule())
+                }
+            }
+
+            Spacer(minLength: 12)
+
+            // Center: mode switcher
+            Picker("", selection: $tab.mode) {
+                ForEach(SessionMode.allCases) { mode in
+                    Label(mode.label, systemImage: mode.symbol).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
+            .disabled(!tab.connected)
+
+            Spacer(minLength: 12)
+
+            // Trailing primary actions
+            HStack(spacing: 6) {
+                Button { sessions.toggleCommandPalette() } label: { Image(systemName: "plus") }
+                    .help("Neue Sitzung (⌘K)")
+                Button { tab.searchVisible.toggle() } label: { Image(systemName: "magnifyingglass") }
+                    .help("Suchen (⌘F)")
+                Button { uploadViaPanel() } label: { Image(systemName: "arrow.up.doc") }
+                    .help("Datei hochladen").disabled(!tab.connected)
+                Menu {
+                    Button("Letzte Ausgabe erklären") { Task { await shell.explainOutput(tab) } }
+                    Button("Fehler beheben") { Task { await shell.fixError(tab) } }
+                    Button("Befehl vorschlagen…") { tab.aiSuggestIntent = ""; showSuggest = true }
+                } label: { Image(systemName: "sparkles") }
+                    .menuStyle(.borderlessButton).fixedSize()
+                    .help("KI-Hilfe").disabled(!tab.connected)
+
+                overflowMenu
+            }
+            .buttonStyle(.borderless)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 9)
+        .background(.bar)
+        .alert("Was soll der Befehl tun?", isPresented: $showSuggest) {
+            TextField("z.B. alle .log-Dateien finden", text: $tab.aiSuggestIntent)
+            Button("Vorschlagen") { Task { await shell.suggestCommand(tab, intent: tab.aiSuggestIntent) } }
+            Button("Abbrechen", role: .cancel) {}
+        }
+        .sheet(item: $fillSnippet) { snip in snippetFillSheet(snip) }
+    }
+
+    private var overflowMenu: some View {
+        Menu {
+            Menu("Schriftgröße") {
+                Button("Größer") { shell.terminalFontSize = min(28, shell.terminalFontSize + 1) }
+                Button("Kleiner") { shell.terminalFontSize = max(9, shell.terminalFontSize - 1) }
+            }
+            Picker("Farbschema", selection: $shell.selectedThemeID) {
+                ForEach(TerminalTheme.all) { Text($0.name).tag($0.id) }
+            }
+            Divider()
+            if !shell.snippets.snippets.isEmpty {
+                Menu("Snippets") {
+                    ForEach(shell.snippets.snippets) { snip in
+                        Button(snip.title) { runSnippet(snip) }
+                    }
+                    Divider()
+                    Button("Snippets verwalten…") { NotificationCenter.default.post(name: .manageSnippets, object: nil) }
+                }
+            }
+            Button("Port-Weiterleitung…") { tab.showForwards = true }.disabled(!tab.connected)
+            Toggle("Eingabe an alle senden (Broadcast)", isOn: $shell.broadcastInput)
+            Divider()
+            Button {
+                NotificationCenter.default.post(name: .toggleTerminalDictation, object: nil)
+            } label: { Label("Diktat ins Terminal", systemImage: "mic") }
+                .disabled(!tab.connected)
+            Divider()
+            Button("Sitzung schließen", role: .destructive) { sessions.close(tab.id) }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+        }
+        .menuStyle(.borderlessButton).fixedSize()
+        .help("Weitere Aktionen")
+    }
+
+    private func runSnippet(_ snip: Snippet) {
+        if snip.placeholders.isEmpty {
+            tab.controller.sendToShell(snip.command)
+        } else {
+            fillValues = Dictionary(uniqueKeysWithValues: snip.placeholders.map { ($0, "") })
+            fillSnippet = snip
+        }
+    }
+
+    @ViewBuilder
+    private func snippetFillSheet(_ snip: Snippet) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(snip.title).font(.headline)
+            Text(snip.command).font(.system(.caption, design: .monospaced)).foregroundStyle(.secondary)
+                .lineLimit(3).fixedSize(horizontal: false, vertical: true)
+            ForEach(snip.placeholders, id: \.self) { name in
+                HStack {
+                    Text(name).frame(width: 110, alignment: .leading).font(.callout)
+                    TextField(name, text: Binding(
+                        get: { fillValues[name] ?? "" },
+                        set: { fillValues[name] = $0 }))
+                    .textFieldStyle(.roundedBorder)
+                }
+            }
+            HStack {
+                Spacer()
+                Button("Abbrechen", role: .cancel) { fillSnippet = nil }
+                Button("Senden") {
+                    tab.controller.sendToShell(snip.filled(with: fillValues))
+                    fillSnippet = nil
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding().frame(width: 420)
+    }
+
+    private func uploadViaPanel() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = false
+        if panel.runModal() == .OK, let url = panel.url {
+            Task { await shell.uploadFile(tab, localURL: url) }
+        }
+    }
+}
+
+// MARK: - Integrated files pane (rich file manager over the session's own SSH connection)
+
+/// "Dateien" mode: embeds the full file manager, but backed by the terminal session's existing
+/// SSH connection (a borrowed FileSession — no second login). Opens in the terminal's current
+/// directory when the shell reports it (OSC 7), otherwise the remote home.
+private struct FilesPane: View {
+    @Bindable var shell: HumibeamShell
+    @Bindable var sessions: SessionManager
+    @Bindable var tab: TerminalTab
+
+    var body: some View {
+        Group {
+            if let fs = tab.fileSession {
+                FileManagerView(session: fs, sessions: sessions)
+            } else if tab.connected {
+                ProgressView("Dateien werden geladen…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                VStack(spacing: 10) {
+                    Image(systemName: "folder.badge.questionmark")
+                        .font(.system(size: 34)).foregroundStyle(.secondary)
+                    Text("Sobald die Sitzung verbunden ist, erscheinen hier die Dateien.")
+                        .font(.callout).foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center).frame(maxWidth: 320)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .task(id: tab.connected) { await ensureFileSession() }
+    }
+
+    private func ensureFileSession() async {
+        guard tab.connected, tab.fileSession == nil,
+              let conn = tab.controller.connection else { return }
+        let fs = FileSession(borrowing: conn, host: tab.host)
+        tab.fileSession = fs
+        await fs.startBorrowed(at: tab.controller.currentDirectory)
+    }
+}
+
+// MARK: - Local session detail
+
+private struct LocalDetailView: View {
+    @Bindable var session: LocalSession
+    @State private var isFullscreen = false
+    var body: some View {
+        VStack(spacing: 0) {
+            LocalTerminalRepresentable(session: session)
+                .padding(10).frame(minWidth: 480, minHeight: 300)
+            if !isFullscreen {
+                HStack(spacing: 8) {
+                    Circle().fill(.green).frame(width: 8, height: 8)
+                    Text("Lokales Terminal — Mac-Shell").font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .padding(.horizontal, 10).padding(.vertical, 5).background(.bar)
+            }
+        }
+        .background(Color.black)
+        .background(FullscreenReader(isFullscreen: $isFullscreen))
+    }
+}
+
+// MARK: - Shared sub-views (search, AI panel, port forwards)
+
+private struct SearchBar: View {
+    @Bindable var tab: TerminalTab
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+            TextField("Im Terminal suchen…", text: $tab.searchTerm)
+                .textFieldStyle(.roundedBorder)
+                .onSubmit { _ = tab.controller.findNext(tab.searchTerm) }
+            Button { _ = tab.controller.findPrevious(tab.searchTerm) } label: { Image(systemName: "chevron.up") }
+            Button { _ = tab.controller.findNext(tab.searchTerm) } label: { Image(systemName: "chevron.down") }
+            Button { tab.searchVisible = false } label: { Image(systemName: "xmark") }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 6).background(.bar)
+    }
+}
+
+private struct AIPanel: View {
+    @Bindable var tab: TerminalTab
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Label(tab.aiTitle, systemImage: "sparkles").font(.headline)
+                Spacer()
+                if tab.aiBusy { ProgressView().controlSize(.small) }
+            }
+            .padding()
+            Divider()
+            ScrollView {
+                Text(tab.aiResult.isEmpty ? (tab.aiBusy ? "Denke nach…" : "—") : tab.aiResult)
+                    .font(tab.aiTitle == "Befehlsvorschlag" ? .system(.body, design: .monospaced) : .body)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+            }
+            Divider()
+            HStack {
+                Button("Kopieren") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(tab.aiResult, forType: .string)
+                }
+                .disabled(tab.aiResult.isEmpty)
+                Spacer()
+                Button("Schließen") { tab.showAIPanel = false }.keyboardShortcut(.defaultAction)
+            }
+            .padding()
+        }
+        .frame(width: 520, height: 420)
     }
 }
 
@@ -296,248 +613,7 @@ private struct ForwardsSheet: View {
     }
 }
 
-private struct AIPanel: View {
-    @Bindable var tab: TerminalTab
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Label(tab.aiTitle, systemImage: "sparkles").font(.headline)
-                Spacer()
-                if tab.aiBusy { ProgressView().controlSize(.small) }
-            }
-            .padding()
-            Divider()
-            ScrollView {
-                Text(tab.aiResult.isEmpty ? (tab.aiBusy ? "Denke nach…" : "—") : tab.aiResult)
-                    .font(tab.aiTitle == "Befehlsvorschlag" ? .system(.body, design: .monospaced) : .body)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding()
-            }
-            Divider()
-            HStack {
-                Button("Kopieren") {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(tab.aiResult, forType: .string)
-                }
-                .disabled(tab.aiResult.isEmpty)
-                Spacer()
-                Button("Schließen") { tab.showAIPanel = false }.keyboardShortcut(.defaultAction)
-            }
-            .padding()
-        }
-        .frame(width: 520, height: 420)
-    }
-}
-
-private struct SearchBar: View {
-    @Bindable var tab: TerminalTab
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-            TextField("Im Terminal suchen…", text: $tab.searchTerm)
-                .textFieldStyle(.roundedBorder)
-                .onSubmit { _ = tab.controller.findNext(tab.searchTerm) }
-            Button { _ = tab.controller.findPrevious(tab.searchTerm) } label: { Image(systemName: "chevron.up") }
-            Button { _ = tab.controller.findNext(tab.searchTerm) } label: { Image(systemName: "chevron.down") }
-            Button { tab.searchVisible = false } label: { Image(systemName: "xmark") }
-        }
-        .padding(.horizontal, 10).padding(.vertical, 6).background(.bar)
-    }
-}
-
-private struct TerminalToolbar: View {
-    @Bindable var shell: HumibeamShell
-    @Bindable var tab: TerminalTab
-    var onClose: () -> Void = {}
-    @State private var showSuggest = false
-    @State private var fillSnippet: Snippet?
-    @State private var fillValues: [String: String] = [:]
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Text(tab.host.displayName).font(.headline)
-            if tab.claudeDetected {
-                Label("Claude Code", systemImage: "sparkles")
-                    .font(.caption2).foregroundStyle(.purple)
-                    .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(Color.purple.opacity(0.12), in: Capsule())
-            }
-            Spacer()
-            Button { NotificationCenter.default.post(name: .toggleTerminalDictation, object: nil) } label: {
-                Image(systemName: "mic.fill")
-            }
-            .help("Diktat ins Terminal (an Claude sprechen) — nochmal klicken zum Stoppen")
-            .disabled(!tab.connected)
-            Menu {
-                Button("Letzte Ausgabe erklären") { Task { await shell.explainOutput(tab) } }
-                Button("Fehler beheben") { Task { await shell.fixError(tab) } }
-                Button("Befehl vorschlagen…") { tab.aiSuggestIntent = ""; showSuggest = true }
-            } label: { Image(systemName: "sparkles") }
-                .menuStyle(.borderlessButton).fixedSize().help("KI-Hilfe").disabled(!tab.connected)
-                .alert("Was soll der Befehl tun?", isPresented: $showSuggest) {
-                    TextField("z.B. alle .log-Dateien finden", text: $tab.aiSuggestIntent)
-                    Button("Vorschlagen") { Task { await shell.suggestCommand(tab, intent: tab.aiSuggestIntent) } }
-                    Button("Abbrechen", role: .cancel) {}
-                }
-            if !tab.recentPaths.isEmpty {
-                Menu {
-                    Section("Von Claude geöffnet") {
-                        ForEach(tab.recentPaths, id: \.self) { p in
-                            Button(p) { Task { await shell.openPathForEdit(tab, path: p) } }
-                        }
-                    }
-                } label: { Image(systemName: "doc.text.magnifyingglass") }
-                    .menuStyle(.borderlessButton).fixedSize()
-                    .help("Dateien aus Claudes Ausgabe im Editor öffnen").disabled(!tab.connected)
-            }
-            HStack(spacing: 4) {
-                Button { shell.terminalFontSize = max(9, shell.terminalFontSize - 1) } label: { Image(systemName: "textformat.size.smaller") }
-                Button { shell.terminalFontSize = min(28, shell.terminalFontSize + 1) } label: { Image(systemName: "textformat.size.larger") }
-            }
-            .help("Schriftgröße")
-            Button { tab.searchVisible.toggle() } label: { Image(systemName: "magnifyingglass") }
-                .help("Suchen (Cmd+F)")
-            Menu {
-                Picker("Theme", selection: $shell.selectedThemeID) {
-                    ForEach(TerminalTheme.all) { Text($0.name).tag($0.id) }
-                }
-                .pickerStyle(.inline)
-            } label: { Image(systemName: "paintpalette") }
-                .menuStyle(.borderlessButton).fixedSize().help("Farbschema")
-            Button { shell.broadcastInput.toggle() } label: {
-                Image(systemName: shell.broadcastInput ? "dot.radiowaves.left.and.right" : "antenna.radiowaves.left.and.right.slash")
-            }
-            .help("Eingabe an alle Tabs senden")
-            .foregroundStyle(shell.broadcastInput ? .orange : .primary)
-            Menu {
-                ForEach(shell.snippets.snippets) { snip in
-                    Button(snip.title) { runSnippet(snip) }
-                }
-                Divider()
-                Button("Snippets verwalten…") { NotificationCenter.default.post(name: .manageSnippets, object: nil) }
-            } label: { Image(systemName: "text.append") }
-                .menuStyle(.borderlessButton).fixedSize()
-                .help("Snippets").disabled(!tab.connected)
-                .sheet(item: $fillSnippet) { snip in snippetFillSheet(snip) }
-            Button { shell.toggleSplit(tab) } label: {
-                Image(systemName: tab.isSplit ? "rectangle.split.2x1.fill" : "rectangle.split.2x1")
-            }
-            .help("Split-Ansicht").disabled(!tab.connected)
-            Button { tab.showForwards = true } label: { Image(systemName: "arrow.left.arrow.right") }
-                .help("Port-Weiterleitung").disabled(!tab.connected)
-            Button {
-                tab.showFileBrowser.toggle()
-                if tab.showFileBrowser { Task { await shell.refreshBrowser(tab) } }
-            } label: { Image(systemName: "folder") }
-                .help("Datei-Browser")
-            Button { uploadViaPanel() } label: { Image(systemName: "arrow.up.doc") }
-                .help("Datei hochladen").disabled(!tab.connected)
-            Button(role: .destructive) { onClose() } label: { Image(systemName: "xmark.circle") }
-                .help("Sitzung schließen")
-        }
-        .padding(.horizontal, 12).padding(.vertical, 7).background(.bar)
-    }
-
-    private func runSnippet(_ snip: Snippet) {
-        if snip.placeholders.isEmpty {
-            tab.controller.sendToShell(snip.command)
-        } else {
-            fillValues = Dictionary(uniqueKeysWithValues: snip.placeholders.map { ($0, "") })
-            fillSnippet = snip
-        }
-    }
-
-    @ViewBuilder
-    private func snippetFillSheet(_ snip: Snippet) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(snip.title).font(.headline)
-            Text(snip.command).font(.system(.caption, design: .monospaced)).foregroundStyle(.secondary)
-                .lineLimit(3).fixedSize(horizontal: false, vertical: true)
-            ForEach(snip.placeholders, id: \.self) { name in
-                HStack {
-                    Text(name).frame(width: 110, alignment: .leading).font(.callout)
-                    TextField(name, text: Binding(
-                        get: { fillValues[name] ?? "" },
-                        set: { fillValues[name] = $0 }))
-                    .textFieldStyle(.roundedBorder)
-                }
-            }
-            HStack {
-                Spacer()
-                Button("Abbrechen", role: .cancel) { fillSnippet = nil }
-                Button("Senden") {
-                    tab.controller.sendToShell(snip.filled(with: fillValues))
-                    fillSnippet = nil
-                }
-                .buttonStyle(.borderedProminent)
-            }
-        }
-        .padding()
-        .frame(width: 420)
-    }
-
-    private func uploadViaPanel() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = true
-        panel.allowsMultipleSelection = false
-        if panel.runModal() == .OK, let url = panel.url {
-            Task { await shell.uploadFile(tab, localURL: url) }
-        }
-    }
-}
-
-private struct HostRow: View {
-    let host: SSHHost
-    let connected: Bool
-    var body: some View {
-        HStack {
-            Image(systemName: connected ? "bolt.horizontal.circle.fill" : "server.rack")
-                .foregroundStyle(connected ? .green : .secondary)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(host.displayName).font(.body)
-                Text("\(host.username)@\(host.host):\(host.port)").font(.caption2).foregroundStyle(.secondary)
-            }
-        }
-        .padding(.vertical, 2)
-    }
-}
-
-// MARK: - Per-session windows (one window per session)
-
-/// Content of an SSH session window — full terminal toolbar + file browser, without sidebar/tabs.
-struct SSHSessionWindowView: View {
-    @Bindable var shell: HumibeamShell
-    @Bindable var tab: TerminalTab
-    var onClose: () -> Void
-    var body: some View {
-        TabContent(shell: shell, tab: tab, onClose: onClose)
-            .frame(minWidth: 620, minHeight: 380)
-    }
-}
-
-/// Content of a local terminal window (the user's Mac shell).
-struct LocalSessionWindowView: View {
-    @Bindable var session: LocalSession
-    @State private var isFullscreen = false
-    var body: some View {
-        VStack(spacing: 0) {
-            LocalTerminalRepresentable(session: session)
-                .padding(12)
-                .frame(minWidth: 620, minHeight: 340)
-            if !isFullscreen {
-                HStack(spacing: 8) {
-                    Circle().fill(.green).frame(width: 8, height: 8)
-                    Text("Lokales Terminal — Mac-Shell").font(.caption).foregroundStyle(.secondary)
-                    Spacer()
-                }
-                .padding(.horizontal, 10).padding(.vertical, 5).background(.bar)
-            }
-        }
-        .background(Color.black)
-        .background(FullscreenReader(isFullscreen: $isFullscreen))
-    }
-}
+// MARK: - Fullscreen reader + local terminal hosting (unchanged plumbing)
 
 /// Reports whether *this view's* window is in macOS fullscreen, so the session views can
 /// hide their toolbar/status bar for a clean, edge-to-edge fullscreen terminal.

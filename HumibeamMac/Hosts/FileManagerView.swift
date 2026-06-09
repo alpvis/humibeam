@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 
-/// Standalone SFTP file manager window — the Cyberduck replacement.
+/// Full SFTP file manager (embedded in the session's "Dateien" mode).
 /// Single-pane browser with breadcrumb path, sortable detail list, full file operations,
 /// Finder drag-&-drop upload, and a transfer log. Built on the exec-based file API.
 struct FileManagerView: View {

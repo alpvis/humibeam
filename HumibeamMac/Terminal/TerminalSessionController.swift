@@ -45,13 +45,17 @@ final class TerminalSessionController: NSObject, TerminalViewDelegate {
     private static let pathRegex = try? NSRegularExpression(
         pattern: #"(?:Update|Read|Write|Edit|MultiEdit|Create|Search)\(([^)\n]{1,200})\)"#)
 
-    // Reconnect
+    // Reconnect (network-aware, unbounded while the link is up, capped exponential backoff)
     var autoReconnect = true
     private var lastCredentials: SSHCredentials?
     private var lastProxy: SSHConnection.ProxyJump?
     private var userInitiatedDisconnect = false
     private var reconnectAttempts = 0
-    private let maxReconnectAttempts = 5
+    private let maxBackoff: Double = 30
+    private var networkAvailable = true
+    private var reconnectWorkItem: DispatchWorkItem?
+    private var keepaliveTimer: Timer?
+    private let keepaliveInterval: TimeInterval = 45
 
     init(knownHosts: KnownHostsStore) {
         self.knownHosts = knownHosts
@@ -98,9 +102,15 @@ final class TerminalSessionController: NSObject, TerminalViewDelegate {
                 self.reconnectAttempts = 0
                 self.onStatus?("verbunden")
                 self.onConnected?()
+                self.startKeepalive()
             } catch {
                 self.onStatus?("Fehler: \(error.localizedDescription)")
                 self.onError?(error.localizedDescription)
+                self.connection = nil
+                // A failed (re)connect attempt should keep retrying with backoff while online.
+                if !self.userInitiatedDisconnect, self.autoReconnect, self.networkAvailable {
+                    self.scheduleReconnect()
+                }
             }
         }
     }
@@ -108,25 +118,87 @@ final class TerminalSessionController: NSObject, TerminalViewDelegate {
     private func handleSessionClosed() {
         ptySession = nil
         connection = nil
-        // Auto-reconnect on an unexpected drop (keeps the same terminal view + scrollback).
-        if !userInitiatedDisconnect, autoReconnect, reconnectAttempts < maxReconnectAttempts,
-           let creds = lastCredentials {
-            reconnectAttempts += 1
-            onStatus?("Verbindung verloren – Reconnect \(reconnectAttempts)/\(maxReconnectAttempts)…")
-            let delay = Double(min(reconnectAttempts, 4)) // 1,2,3,4s backoff
-            let proxy = lastProxy
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-                guard let self, self.connection == nil, !self.userInitiatedDisconnect else { return }
-                self.connect(creds, proxy: proxy)
-            }
-        } else {
-            onStatus?("Verbindung geschlossen.")
-            onClosed?()
+        stopKeepalive()
+        if userInitiatedDisconnect { onStatus?("Verbindung geschlossen."); onClosed?(); return }
+        guard autoReconnect, lastCredentials != nil else {
+            onStatus?("Verbindung geschlossen."); onClosed?(); return
+        }
+        if !networkAvailable {
+            // Offline: don't burn backoff attempts — wait for the network to return.
+            onStatus?("offline – warte auf Netz…")
+            return
+        }
+        scheduleReconnect()
+    }
+
+    /// Schedules a reconnect with capped exponential backoff (1, 2, 4, 8, 16, 30, 30 … seconds).
+    private func scheduleReconnect() {
+        guard let creds = lastCredentials, connection == nil, !userInitiatedDisconnect else { return }
+        reconnectWorkItem?.cancel()
+        reconnectAttempts += 1
+        let delay = min(maxBackoff, pow(2, Double(min(reconnectAttempts - 1, 5))))
+        onStatus?("Verbindung verloren – Reconnect in \(Int(delay))s (Versuch \(reconnectAttempts))…")
+        let proxy = lastProxy
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.connection == nil,
+                  !self.userInitiatedDisconnect, self.networkAvailable else { return }
+            self.connect(creds, proxy: proxy)
+        }
+        reconnectWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    /// Called from the network monitor when the link drops: pause reconnect loops.
+    func networkBecameUnavailable() {
+        networkAvailable = false
+        reconnectWorkItem?.cancel()
+        reconnectWorkItem = nil
+    }
+
+    /// Called from the network monitor when the link returns: reconnect immediately, no backoff wait.
+    func networkBecameAvailable() {
+        networkAvailable = true
+        guard connection == nil, !userInitiatedDisconnect, autoReconnect,
+              let creds = lastCredentials else { return }
+        reconnectAttempts = 0
+        reconnectWorkItem?.cancel()
+        reconnectWorkItem = nil
+        connect(creds, proxy: lastProxy)
+    }
+
+    /// Sets the initial network state when the controller is created (no reconnect side effect).
+    func primeNetwork(_ online: Bool) { networkAvailable = online }
+
+    // MARK: Keepalive — detect a half-open connection faster than TCP alone would.
+
+    private func startKeepalive() {
+        stopKeepalive()
+        let timer = Timer.scheduledTimer(withTimeInterval: keepaliveInterval, repeats: true) { [weak self] _ in
+            Task { @MainActor in await self?.keepalivePing() }
+        }
+        keepaliveTimer = timer
+    }
+
+    private func stopKeepalive() {
+        keepaliveTimer?.invalidate()
+        keepaliveTimer = nil
+    }
+
+    private func keepalivePing() async {
+        guard let conn = connection, networkAvailable else { return }
+        do {
+            _ = try await conn.exec("true")
+        } catch {
+            // The link is dead but the OS hasn't told us yet — force the reconnect cycle.
+            await conn.close()
         }
     }
 
     func disconnect() {
         userInitiatedDisconnect = true
+        reconnectWorkItem?.cancel()
+        reconnectWorkItem = nil
+        stopKeepalive()
         ptySession?.close()
         let conn = connection
         connection = nil
@@ -277,12 +349,25 @@ final class TerminalSessionController: NSObject, TerminalViewDelegate {
     }
 
     func sizeChanged(source: TerminalView, newCols: Int, newRows: Int) {
+        // Ignore transient zero/negative sizes reported during view re-parenting (split toggling).
+        guard newCols > 0, newRows > 0 else { return }
         ptySession?.resize(cols: newCols, rows: newRows)
     }
 
     func setTerminalTitle(source: TerminalView, title: String) { /* could surface to window title */ }
 
-    func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) { /* unused */ }
+    /// Latest working directory the remote shell reported via OSC 7 (if it emits it). Used to open
+    /// the integrated file manager in the same directory the terminal is sitting in.
+    private(set) var currentDirectory: String?
+
+    func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {
+        guard let directory else { return }
+        if let url = URL(string: directory), url.scheme == "file" {
+            currentDirectory = url.path
+        } else {
+            currentDirectory = directory
+        }
+    }
 
     func scrolled(source: TerminalView, position: Double) { /* unused */ }
 

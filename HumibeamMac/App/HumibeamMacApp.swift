@@ -102,20 +102,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             forName: .manageSnippets, object: nil, queue: .main) { [weak self] _ in
             self?.sessions.openSnippetsWindow()
         }
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleShowSettingsHub), name: .showSettingsHub, object: nil)
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
 
         DispatchQueue.main.async { [weak self] in
-            self?.showOnboardingIfNeeded()
-            self?.sessions.restoreSessions()
-            self?.sessions.openHubTipsIfNeeded()
+            guard let self else { return }
+            self.showOnboardingIfNeeded()
+            self.sessions.restoreSessions()
+            self.sessions.showMainWindow()   // single main window is humibeam's home
+            self.sessions.openHubTipsIfNeeded()
         }
     }
 
-    // When the user reopens the app (e.g. clicks the Dock icon while a session is open),
-    // surface the menu-bar popover so the hub is reachable.
+    // When the user reopens the app (e.g. clicks the Dock icon), bring the main window back.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag, !popover.isShown { showPopover() }
+        if !flag { sessions.showMainWindow() }
         return true
+    }
+
+    /// Reveal the settings hub (menu-bar popover on its settings page).
+    @objc private func handleShowSettingsHub() {
+        if !popover.isShown { showPopover() }
+        appState.page = .settings
     }
 
     // MARK: - Main menu

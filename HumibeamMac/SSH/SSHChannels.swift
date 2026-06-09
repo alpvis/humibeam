@@ -31,12 +31,14 @@ final class PTYSession {
 
     func write(_ string: String) { write(Array(string.utf8)) }
 
-    /// Inform the remote PTY of a new terminal size.
+    /// Inform the remote PTY of a new terminal size. Clamp to >= 1: while a terminal view is being
+    /// re-parented (e.g. switching into split view) SwiftTerm can briefly report a zero/negative
+    /// size, and NIOSSH's `UInt32(cols)` would trap on a negative value — crashing the whole app.
     func resize(cols: Int, rows: Int) {
         guard let channel else { return }
         let event = SSHChannelRequestEvent.WindowChangeRequest(
-            terminalCharacterWidth: cols,
-            terminalRowHeight: rows,
+            terminalCharacterWidth: max(1, cols),
+            terminalRowHeight: max(1, rows),
             terminalPixelWidth: 0,
             terminalPixelHeight: 0
         )

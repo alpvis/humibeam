@@ -3,6 +3,8 @@ import SwiftUI
 struct MenuBarView: View {
     @Bindable var appState: AppState
     let sessions: SessionManager
+    /// Voice/dictation is a secondary feature now — its panel starts collapsed.
+    @State private var voiceExpanded = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -125,55 +127,80 @@ struct MenuBarView: View {
                     .padding(.bottom, 6)
             }
 
-            transcriptionModePanel
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
-                .padding(.bottom, appState.accessibilityPermissionGranted ? 6 : 4)
-
-            if !appState.accessibilityPermissionGranted {
-                accessibilityHintBanner
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 6)
-            }
-
-            if !appState.appSettings.secureLocalModeEnabled {
-                profileSwitcher
-                    .padding(.horizontal, 16)
-                    .padding(.top, 4)
-                    .padding(.bottom, 6)
-            }
-
-            // Workflow list
-            VStack(spacing: 0) {
-                ForEach(WorkflowType.mainMenuCases) { type in
-                    let enabled = appState.isWorkflowAvailable(type)
-                    WorkflowRowView(
-                        type: type,
-                        enabled: enabled,
-                        customName: appState.displayName(for: type),
-                        subtitle: appState.workflowSubtitle(for: type)
-                    ) {
-                        appState.startWorkflow(type)
-                    }
-                }
-            }
-            .padding(.vertical, 2)
-
+            // Sessions are humibeam's focus → the hub leads the popover.
             sessionHub
                 .padding(.horizontal, 16)
-                .padding(.top, 6)
+                .padding(.top, 12)
+                .padding(.bottom, 6)
+
+            // Voice/dictation is a secondary feature — tucked into a collapsed section.
+            voiceSection
+                .padding(.horizontal, 16)
+                .padding(.top, 2)
                 .padding(.bottom, 6)
 
             appFooter
         }
     }
 
+    /// Secondary, collapsible voice/dictation panel (transcription mode + workflows).
+    private var voiceSection: some View {
+        VStack(spacing: 8) {
+            Button { withAnimation(.easeInOut(duration: 0.18)) { voiceExpanded.toggle() } } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "mic")
+                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+                    Text("Sprache · Diktat").font(.system(size: 12.5, weight: .semibold))
+                    Spacer()
+                    Image(systemName: voiceExpanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(SubtleButtonStyle())
+
+            if voiceExpanded {
+                transcriptionModePanel
+                    .padding(.top, 2)
+
+                if !appState.accessibilityPermissionGranted {
+                    accessibilityHintBanner
+                }
+
+                if !appState.appSettings.secureLocalModeEnabled {
+                    profileSwitcher
+                }
+
+                VStack(spacing: 0) {
+                    ForEach(WorkflowType.mainMenuCases) { type in
+                        let enabled = appState.isWorkflowAvailable(type)
+                        WorkflowRowView(
+                            type: type,
+                            enabled: enabled,
+                            customName: appState.displayName(for: type),
+                            subtitle: appState.workflowSubtitle(for: type)
+                        ) {
+                            appState.startWorkflow(type)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.035)))
+    }
+
     // MARK: - Session hub (the menu bar is the home for all sessions)
 
     private var sessionHub: some View {
         VStack(spacing: 8) {
+            hubLaunchRow(icon: "macwindow", title: "Hauptfenster öffnen",
+                         subtitle: "Alle Sitzungen, Profile & Dateien", trailing: "", prominent: true) {
+                sessions.showMainWindow(); dismissPopover()
+            }
+
             hubLaunchRow(icon: "apple.terminal.fill", title: "Lokales Terminal",
-                         subtitle: "Mac-Shell", trailing: "⌘T", prominent: true) {
+                         subtitle: "Mac-Shell", trailing: "⌘T", prominent: false) {
                 sessions.openLocalSession(); dismissPopover()
             }
 
@@ -186,7 +213,7 @@ struct MenuBarView: View {
                 hubSectionLabel("DATEIEN (SFTP)")
                 ForEach(sessions.shell.hostStore.hosts) { host in
                     hubLaunchRow(icon: "folder.fill", title: host.displayName,
-                                 subtitle: "Dateien übertragen, Cyberduck-Ersatz",
+                                 subtitle: "Dateien übertragen (SFTP)",
                                  trailing: "", prominent: false) {
                         sessions.openFileSession(host); dismissPopover()
                     }
@@ -306,7 +333,7 @@ struct MenuBarView: View {
 
     private func hubActiveRow(_ s: SessionManager.ActiveSession) -> some View {
         HStack(spacing: 9) {
-            Circle().fill(s.connected ? Color.green : Color.orange).frame(width: 7, height: 7)
+            Circle().fill(Color(nsColor: s.health.color)).frame(width: 7, height: 7)
             Image(systemName: s.symbol)
                 .font(.system(size: 11)).foregroundStyle(.secondary).frame(width: 16)
             Text(s.title).font(.system(size: 12)).lineLimit(1)

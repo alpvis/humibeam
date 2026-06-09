@@ -66,7 +66,7 @@ func write(_ data: Data, _ path: String) {
     print("✓ \(path)")
 }
 
-let res = "/Users/ali/Developer/humibeam-app/HumibeamMac/Resources"
+let res = "/Users/ali/humibeam/HumibeamMac/Resources"
 let appiconset = "\(res)/Assets.xcassets/AppIcon.appiconset"
 let iconsetTmp = "/tmp/Humibeam.iconset"
 

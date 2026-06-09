@@ -18,7 +18,7 @@ final class FileSession: Identifiable {
     var status = "verbinde…"
     var transfers: [Transfer] = []
 
-    // Navigation history (back / forward like Cyberduck).
+    // Navigation history (back / forward).
     @ObservationIgnored private var backStack: [String] = []
     @ObservationIgnored private var forwardStack: [String] = []
     var canGoBack: Bool { !backStack.isEmpty }
@@ -26,6 +26,9 @@ final class FileSession: Identifiable {
 
     @ObservationIgnored private var connection: SSHConnection?
     @ObservationIgnored weak var window: NSWindow?
+    /// When false, this session borrows another session's SSH connection (the integrated file
+    /// manager) and must NOT close it on disconnect.
+    @ObservationIgnored private var ownsConnection = true
 
     struct Transfer: Identifiable {
         let id = UUID()
@@ -63,9 +66,35 @@ final class FileSession: Identifiable {
         self.host = host
         self.title = "Dateien — \(host.displayName)"
         self.connection = SSHConnection(credentials: credentials, hostKeyVerifier: knownHosts, proxyJump: proxy)
+        self.ownsConnection = true
+    }
+
+    /// Borrows a running terminal session's SSH connection — the integrated file manager runs over
+    /// the *same* multiplexed connection (no second login). Closing it must not drop the terminal.
+    init(borrowing connection: SSHConnection, host: SSHHost) {
+        self.host = host
+        self.title = "Dateien — \(host.displayName)"
+        self.connection = connection
+        self.ownsConnection = false
     }
 
     // MARK: - Lifecycle
+
+    /// Brings a borrowed session online without a fresh connect, starting at `startPath`
+    /// (the terminal's current directory) or the remote home if that's unknown.
+    func startBorrowed(at startPath: String?) async {
+        guard let conn = connection else { return }
+        do {
+            let home = try await conn.remoteHome()
+            connected = true
+            status = "verbunden"
+            if let p = startPath, !p.isEmpty { path = p } else { path = home }
+            await refresh()
+        } catch {
+            connected = false
+            status = "Dateien nicht verfügbar: \(error.localizedDescription)"
+        }
+    }
 
     func start() async {
         guard let conn = connection else { return }
@@ -89,7 +118,8 @@ final class FileSession: Identifiable {
         connected = false
         let conn = connection
         connection = nil
-        Task { await conn?.close() }
+        // Only tear down a connection we own; a borrowed one belongs to the terminal session.
+        if ownsConnection { Task { await conn?.close() } }
     }
 
     // MARK: - Navigation

@@ -4,9 +4,9 @@ import SwiftUI
 import Observation
 import SwiftTerm
 
-/// Owns the open session windows — one window per session (local or SSH).
-/// The menu-bar popover is the hub that launches sessions and lists the active ones;
-/// closing a window actively ends that session. Sessions stay alive while their window is open.
+/// Owns the single main window and the set of running sessions (local + SSH).
+/// Sessions live in `shell` / `localSessions` and keep running even when the main window is
+/// closed — the menu bar is the stable home, the window is just a view onto the sessions.
 @Observable
 @MainActor
 final class SessionManager: NSObject, NSWindowDelegate {
@@ -14,32 +14,227 @@ final class SessionManager: NSObject, NSWindowDelegate {
     var localSessions: [LocalSession] = []
     var fileSessions: [FileSession] = []
 
-    /// window per session id (an SSH tab id or a local session id)
-    @ObservationIgnored private var windows: [UUID: NSWindow] = [:]
+    /// The session currently shown in the main window's detail pane.
+    var selectedSessionID: UUID?
+
+    @ObservationIgnored private var mainWindow: NSWindow?
     @ObservationIgnored private var profilesWindow: NSWindow?
     @ObservationIgnored private var paletteWindow: NSWindow?
     @ObservationIgnored private var snippetsWindow: NSWindow?
+    @ObservationIgnored private var tipsWindow: NSWindow?
 
-    private var anyWindowOpen: Bool { !windows.isEmpty || profilesWindow != nil || snippetsWindow != nil }
+    private var anyUtilityWindowOpen: Bool {
+        profilesWindow != nil || paletteWindow != nil || snippetsWindow != nil || tipsWindow != nil
+    }
+    private var anyWindowOpen: Bool { mainWindow != nil || anyUtilityWindowOpen }
 
-    func openSnippetsWindow() {
-        if let w = snippetsWindow {
-            NSApp.setActivationPolicy(.regular); w.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true); return
+    init(shell: HumibeamShell) {
+        self.shell = shell
+        super.init()
+    }
+
+    // MARK: - Main window
+
+    /// Creates (or focuses) the single main window.
+    func showMainWindow() {
+        if let window = mainWindow {
+            NSApp.setActivationPolicy(.regular)
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
         }
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 420),
-                              styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-        window.title = "Snippets"
-        window.contentViewController = NSHostingController(rootView: SnippetsView(store: shell.snippets))
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1040, height: 660),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            backing: .buffered, defer: false)
+        window.title = "humibeam"
+        window.titlebarAppearsTransparent = false
+        window.contentMinSize = NSSize(width: 760, height: 440)
+        window.contentViewController = NSHostingController(
+            rootView: MainWindowView(shell: shell, sessions: self))
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.center()
-        snippetsWindow = window
+        window.setFrameAutosaveName("humibeam.mainWindow")
+        mainWindow = window
         NSApp.setActivationPolicy(.regular)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    // MARK: - Command palette (⌘K)
+    /// Opens (or focuses) the settings hub — handled by the AppDelegate's menu-bar popover.
+    func openSettingsHub() {
+        NotificationCenter.default.post(name: .showSettingsHub, object: nil)
+    }
+
+    // MARK: - Open / select sessions
+
+    func openLocalSession() {
+        let session = LocalSession(fontSize: shell.terminalFontSize, theme: shell.theme)
+        localSessions.append(session)
+        showMainWindow()
+        select(session.id)
+        persistOpenSessions()
+    }
+
+    @discardableResult
+    func openSSHSession(_ host: SSHHost) -> TerminalTab? {
+        showMainWindow()
+        if let existing = shell.tabs.first(where: { $0.host.id == host.id }) {
+            select(existing.id)
+            return existing
+        }
+        guard let tab = shell.connect(to: host) else {
+            NSSound.beep()
+            return nil
+        }
+        select(tab.id)
+        persistOpenSessions()
+        return tab
+    }
+
+    /// Opens an SSH session and switches it straight into the integrated file manager.
+    func openFileSession(_ host: SSHHost) {
+        if let tab = openSSHSession(host) { tab.mode = .files }
+    }
+
+    /// Selects a session in the main window and brings the window forward.
+    func select(_ id: UUID) {
+        selectedSessionID = id
+        showMainWindow()
+    }
+
+    /// Kept for older call sites — same as `select`.
+    func focus(_ id: UUID) { select(id) }
+
+    func close(_ id: UUID) {
+        if let tab = shell.tabs.first(where: { $0.id == id }) {
+            shell.closeTab(tab)
+        } else if let index = localSessions.firstIndex(where: { $0.id == id }) {
+            localSessions[index].terminate()
+            localSessions.remove(at: index)
+        } else if let index = fileSessions.firstIndex(where: { $0.id == id }) {
+            fileSessions[index].disconnect()
+            fileSessions.remove(at: index)
+        }
+        if selectedSessionID == id { selectedSessionID = activeSessions.first?.id }
+        persistOpenSessions()
+    }
+
+    func isOpen(_ id: UUID) -> Bool {
+        shell.tabs.contains { $0.id == id } || localSessions.contains { $0.id == id }
+    }
+
+    /// True if the session is the one shown in the key main window (no need to notify).
+    func isFrontmost(_ id: UUID) -> Bool {
+        guard NSApp.isActive, let window = mainWindow, window.isKeyWindow else { return false }
+        return selectedSessionID == id
+    }
+
+    // MARK: - Unified session list (drives the sidebar)
+
+    struct ActiveSession: Identifiable {
+        let id: UUID
+        let title: String
+        let connected: Bool
+        let symbol: String
+        let health: SessionHealth
+    }
+
+    var activeSessions: [ActiveSession] {
+        let loc = localSessions.map {
+            ActiveSession(id: $0.id, title: $0.title, connected: true,
+                          symbol: "apple.terminal", health: .connected)
+        }
+        let ssh = shell.tabs.map {
+            ActiveSession(id: $0.id, title: $0.title, connected: $0.connected,
+                          symbol: "server.rack", health: $0.health)
+        }
+        return ssh + loc
+    }
+
+    var hasOpenSessions: Bool { !activeSessions.isEmpty }
+
+    // MARK: - Voice dictation / path routing
+
+    /// The SSH session currently selected (for menu commands like search/split).
+    func focusedTab() -> TerminalTab? {
+        guard let id = selectedSessionID else { return nil }
+        return shell.tabs.first { $0.id == id }
+    }
+
+    /// Types text into the currently selected session. Returns true if handled.
+    @discardableResult
+    func sendTextToFocusedSession(_ text: String) -> Bool {
+        guard let id = selectedSessionID else { return false }
+        if let tab = shell.tabs.first(where: { $0.id == id }), tab.connected {
+            tab.controller.sendToShell(text)
+            return true
+        }
+        if let local = localSessions.first(where: { $0.id == id }) {
+            local.terminalView.send(txt: text)
+            return true
+        }
+        return false
+    }
+
+    /// Injects a remote file path into a terminal session for `host` (where Claude Code runs) and
+    /// brings the window forward. Prefers an open terminal for the same host. Returns false if none.
+    @discardableResult
+    func giveToTerminal(path: String, host: SSHHost) -> Bool {
+        let candidate = shell.tabs.first { $0.host.id == host.id }
+            ?? shell.tabs.first { $0.connected }
+        guard let tab = candidate else { return false }
+        tab.controller.sendToShell(path + " ")
+        tab.mode = .terminal
+        select(tab.id)
+        return true
+    }
+
+    // MARK: - Persistence (restore open sessions on next launch)
+
+    private struct SessionDescriptor: Codable {
+        var kind: String          // "local" | "ssh" | "files"
+        var hostID: UUID?
+    }
+    @ObservationIgnored private let restoreKey = "humibeam.openSessions"
+    @ObservationIgnored private var restoring = false
+
+    private func persistOpenSessions() {
+        guard !restoring else { return }
+        var list: [SessionDescriptor] = localSessions.map { _ in SessionDescriptor(kind: "local", hostID: nil) }
+        list += shell.tabs.map { SessionDescriptor(kind: $0.mode == .files ? "files" : "ssh", hostID: $0.host.id) }
+        if let data = try? JSONEncoder().encode(list) {
+            UserDefaults.standard.set(data, forKey: restoreKey)
+        }
+    }
+
+    /// Reopens the sessions that were open at the last quit. Called once at launch.
+    func restoreSessions() {
+        guard let data = UserDefaults.standard.data(forKey: restoreKey),
+              let list = try? JSONDecoder().decode([SessionDescriptor].self, from: data),
+              !list.isEmpty else { return }
+        restoring = true
+        for d in list {
+            switch d.kind {
+            case "local":
+                openLocalSession()
+            case "ssh":
+                if let id = d.hostID, let host = shell.hostStore.hosts.first(where: { $0.id == id }) {
+                    openSSHSession(host)
+                }
+            case "files":
+                if let id = d.hostID, let host = shell.hostStore.hosts.first(where: { $0.id == id }) {
+                    openFileSession(host)
+                }
+            default: break
+            }
+        }
+        restoring = false
+        persistOpenSessions()
+    }
+
+    // MARK: - Utility windows (command palette, profiles, snippets, first-run tips)
 
     func toggleCommandPalette() {
         if paletteWindow != nil { closeCommandPalette(); return }
@@ -74,9 +269,45 @@ final class SessionManager: NSObject, NSWindowDelegate {
         paletteWindow = nil
     }
 
-    // MARK: - First-run hub tips
+    func openSnippetsWindow() {
+        if let w = snippetsWindow {
+            NSApp.setActivationPolicy(.regular); w.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true); return
+        }
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 420),
+                              styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        window.title = "Snippets"
+        window.contentViewController = NSHostingController(rootView: SnippetsView(store: shell.snippets))
+        window.isReleasedWhenClosed = false
+        window.delegate = self
+        window.center()
+        snippetsWindow = window
+        NSApp.setActivationPolicy(.regular)
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
 
-    @ObservationIgnored private var tipsWindow: NSWindow?
+    func openProfilesWindow() {
+        if let window = profilesWindow {
+            NSApp.setActivationPolicy(.regular)
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 580, height: 540),
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered, defer: false)
+        window.title = "Profile"
+        window.contentMinSize = NSSize(width: 460, height: 380)
+        window.contentViewController = NSHostingController(rootView: ProfilesView(shell: shell, sessions: self))
+        window.isReleasedWhenClosed = false
+        window.delegate = self
+        window.center()
+        profilesWindow = window
+        NSApp.setActivationPolicy(.regular)
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
 
     func openHubTipsIfNeeded() {
         let key = "humibeam.didSeeHubTips.v2"
@@ -97,297 +328,25 @@ final class SessionManager: NSObject, NSWindowDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    init(shell: HumibeamShell) {
-        self.shell = shell
-        super.init()
-    }
-
-    // MARK: - Persistence (restore open sessions on next launch)
-
-    private struct SessionDescriptor: Codable {
-        var kind: String          // "local" | "ssh" | "files"
-        var hostID: UUID?
-    }
-    @ObservationIgnored private let restoreKey = "humibeam.openSessions"
-    @ObservationIgnored private var restoring = false
-
-    private func persistOpenSessions() {
-        guard !restoring else { return }
-        var list: [SessionDescriptor] = localSessions.map { _ in SessionDescriptor(kind: "local", hostID: nil) }
-        list += shell.tabs.filter { windows[$0.id] != nil }.map { SessionDescriptor(kind: "ssh", hostID: $0.host.id) }
-        list += fileSessions.filter { windows[$0.id] != nil }.map { SessionDescriptor(kind: "files", hostID: $0.host.id) }
-        if let data = try? JSONEncoder().encode(list) {
-            UserDefaults.standard.set(data, forKey: restoreKey)
-        }
-    }
-
-    /// Reopens the sessions that were open at the last quit. Called once at launch.
-    func restoreSessions() {
-        guard let data = UserDefaults.standard.data(forKey: restoreKey),
-              let list = try? JSONDecoder().decode([SessionDescriptor].self, from: data),
-              !list.isEmpty else { return }
-        restoring = true
-        for d in list {
-            switch d.kind {
-            case "local":
-                openLocalSession()
-            case "ssh":
-                if let id = d.hostID, let host = shell.hostStore.hosts.first(where: { $0.id == id }) {
-                    openSSHSession(host)
-                }
-            case "files":
-                if let id = d.hostID, let host = shell.hostStore.hosts.first(where: { $0.id == id }) {
-                    openFileSession(host)
-                }
-            default: break
-            }
-        }
-        restoring = false
-        persistOpenSessions()
-    }
-
-    // MARK: - Unified list for the topbar
-
-    struct ActiveSession: Identifiable {
-        let id: UUID
-        let title: String
-        let connected: Bool
-        let symbol: String
-    }
-
-    var activeSessions: [ActiveSession] {
-        let loc = localSessions.map {
-            ActiveSession(id: $0.id, title: $0.title, connected: true, symbol: "apple.terminal")
-        }
-        let ssh = shell.tabs.map {
-            ActiveSession(id: $0.id, title: $0.title, connected: $0.connected, symbol: "server.rack")
-        }
-        let files = fileSessions.map {
-            ActiveSession(id: $0.id, title: $0.title, connected: $0.connected, symbol: "folder")
-        }
-        return loc + ssh + files
-    }
-
-    var hasOpenSessions: Bool { !windows.isEmpty }
-
-    // MARK: - Open sessions
-
-    func openLocalSession() {
-        let session = LocalSession(fontSize: shell.terminalFontSize, theme: shell.theme)
-        localSessions.append(session)
-        let window = makeWindow(title: session.title, id: session.id,
-                                content: AnyView(LocalSessionWindowView(session: session)))
-        session.window = window
-        windows[session.id] = window
-        present(window)
-    }
-
-    func openSSHSession(_ host: SSHHost) {
-        // If a session for this host is already open, just focus it.
-        if let existing = shell.tabs.first(where: { $0.host.id == host.id }), windows[existing.id] != nil {
-            focus(existing.id)
-            return
-        }
-        guard let tab = shell.connect(to: host) else {
-            NSSound.beep()
-            return
-        }
-        let view = SSHSessionWindowView(shell: shell, tab: tab, onClose: { [weak self] in self?.close(tab.id) })
-        let window = makeWindow(title: tab.title, id: tab.id, content: AnyView(view))
-        windows[tab.id] = window
-        present(window)
-    }
-
-    /// Opens a standalone SFTP file-manager window for a host (its own connection, no terminal).
-    func openFileSession(_ host: SSHHost) {
-        if let existing = fileSessions.first(where: { $0.host.id == host.id }), windows[existing.id] != nil {
-            focus(existing.id)
-            return
-        }
-        let creds: SSHCredentials
-        do { creds = try shell.hostStore.credentials(for: host) }
-        catch { NSSound.beep(); return }
-        let proxy = (try? shell.hostStore.proxyCredentials(for: host)).flatMap { $0 }
-            .map { SSHConnection.ProxyJump(credentials: $0, verifier: shell.knownHosts) }
-
-        let session = FileSession(host: host, credentials: creds, knownHosts: shell.knownHosts, proxy: proxy)
-        fileSessions.append(session)
-        let window = makeWindow(title: session.title, id: session.id,
-                                content: AnyView(FileManagerView(session: session, sessions: self)))
-        session.window = window
-        windows[session.id] = window
-        present(window)
-        Task { await session.start() }
-    }
-
-    // MARK: - Focus / close
-
-    func focus(_ id: UUID) {
-        guard let window = windows[id] else { return }
-        NSApp.setActivationPolicy(.regular)
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-    }
-
-    func close(_ id: UUID) {
-        windows[id]?.close() // triggers windowWillClose → cleanup
-    }
-
-    func isOpen(_ id: UUID) -> Bool { windows[id] != nil }
-
-    /// True if the session's window is the app's key window AND the app is active (no need to notify).
-    func isFrontmost(_ id: UUID) -> Bool {
-        guard NSApp.isActive, let window = windows[id] else { return false }
-        return window.isKeyWindow
-    }
-
-    /// Injects a remote file path into a terminal session for `host` (where Claude Code runs) and
-    /// brings that window forward. Prefers an open terminal for the same host. Returns false if none.
-    @discardableResult
-    func giveToTerminal(path: String, host: SSHHost) -> Bool {
-        let candidate = shell.tabs.first { $0.host.id == host.id && windows[$0.id] != nil }
-            ?? shell.tabs.first { $0.connected && windows[$0.id] != nil }
-        guard let tab = candidate else { return false }
-        tab.controller.sendToShell(path + " ")
-        focus(tab.id)
-        return true
-    }
-
-    /// The SSH session whose window is currently key (for menu commands like search/split).
-    func focusedTab() -> TerminalTab? {
-        guard let key = NSApp.keyWindow,
-              let id = windows.first(where: { $0.value === key })?.key else { return nil }
-        return shell.tabs.first { $0.id == id }
-    }
-
-    // MARK: - Profiles window
-
-    func openProfilesWindow() {
-        if let window = profilesWindow {
-            NSApp.setActivationPolicy(.regular)
-            window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            return
-        }
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 580, height: 540),
-            styleMask: [.titled, .closable, .resizable],
-            backing: .buffered, defer: false
-        )
-        window.title = "Profile"
-        window.contentMinSize = NSSize(width: 460, height: 380)
-        window.contentViewController = NSHostingController(rootView: ProfilesView(shell: shell, sessions: self))
-        window.isReleasedWhenClosed = false
-        window.delegate = self
-        window.center()
-        profilesWindow = window
-        NSApp.setActivationPolicy(.regular)
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-    }
-
-    // MARK: - Voice dictation routing
-
-    /// Types text into the terminal of the frontmost session window. Returns true if handled.
-    @discardableResult
-    func sendTextToFocusedSession(_ text: String) -> Bool {
-        guard let key = NSApp.keyWindow, isSessionWindow(key),
-              let tv = terminalView(in: key) else { return false }
-        tv.send(txt: text)
-        return true
-    }
-
-    private func isSessionWindow(_ window: NSWindow) -> Bool {
-        windows.values.contains { $0 === window }
-    }
-
-    private func terminalView(in window: NSWindow) -> TerminalView? {
-        if let tv = window.firstResponder as? TerminalView { return tv }
-        return Self.findTerminalView(in: window.contentView)
-    }
-
-    private static func findTerminalView(in view: NSView?) -> TerminalView? {
-        guard let view else { return nil }
-        if let tv = view as? TerminalView { return tv }
-        for sub in view.subviews {
-            if let tv = findTerminalView(in: sub) { return tv }
-        }
-        return nil
-    }
-
-    // MARK: - Window plumbing
-
-    private func makeWindow(title: String, id: UUID, content: AnyView) -> NSWindow {
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 940, height: 620),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
-            backing: .buffered, defer: false
-        )
-        window.title = title
-        window.backgroundColor = .black
-        window.contentMinSize = NSSize(width: 620, height: 380)
-        window.contentViewController = NSHostingController(rootView: content)
-        window.isReleasedWhenClosed = false
-        window.delegate = self
-        return window
-    }
-
-    private func present(_ window: NSWindow) {
-        NSApp.setActivationPolicy(.regular)
-        if let last = windows.values.first(where: { $0 !== window && $0.isVisible }) {
-            var frame = last.frame
-            frame.origin.x += 30
-            frame.origin.y -= 30
-            window.setFrame(frame, display: false)
-        } else {
-            window.center()
-        }
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-        persistOpenSessions()
-    }
-
     // MARK: - NSWindowDelegate
 
     func windowWillClose(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
 
-        if window === paletteWindow {
+        if window === mainWindow {
+            // Closing the main window does NOT end sessions — they keep running in the background.
+            mainWindow = nil
+        } else if window === paletteWindow {
             paletteWindow = nil
-            if !anyWindowOpen { NSApp.setActivationPolicy(.accessory) }
-            return
-        }
-        if window === profilesWindow {
+        } else if window === profilesWindow {
             profilesWindow = nil
-            if !anyWindowOpen { NSApp.setActivationPolicy(.accessory) }
-            return
-        }
-        if window === snippetsWindow {
+        } else if window === snippetsWindow {
             snippetsWindow = nil
-            if !anyWindowOpen { NSApp.setActivationPolicy(.accessory) }
-            return
-        }
-        if window === tipsWindow {
+        } else if window === tipsWindow {
             tipsWindow = nil
-            if !anyWindowOpen { NSApp.setActivationPolicy(.accessory) }
-            return
         }
 
-        guard let id = windows.first(where: { $0.value === window })?.key else { return }
-        windows.removeValue(forKey: id)
-
-        if let tab = shell.tabs.first(where: { $0.id == id }) {
-            shell.closeTab(tab)
-        } else if let index = localSessions.firstIndex(where: { $0.id == id }) {
-            localSessions[index].terminate()
-            localSessions.remove(at: index)
-        } else if let index = fileSessions.firstIndex(where: { $0.id == id }) {
-            fileSessions[index].disconnect()
-            fileSessions.remove(at: index)
-        }
-
-        persistOpenSessions()
-        // Back to a pure menu-bar app once the last window is gone.
+        // Back to a pure menu-bar agent once every window is gone (sessions stay alive).
         if !anyWindowOpen { NSApp.setActivationPolicy(.accessory) }
     }
 }

@@ -661,6 +661,8 @@ extension Notification.Name {
     static let claudeAlert = Notification.Name("claudeAlert")
     /// Open the snippet manager window.
     static let manageSnippets = Notification.Name("manageSnippets")
+    /// Open the settings hub (menu-bar popover on the settings page).
+    static let showSettingsHub = Notification.Name("showSettingsHub")
 }
 
 private struct PasteTarget {
