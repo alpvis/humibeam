@@ -22,10 +22,9 @@ echo "▶︎ Setze Version $VERSION (Build $BUILD) in project.yml"
 echo "▶︎ Baue notarisierte DMG (Release)"
 ./build.sh --release --dmg --notarize
 
-DMG=$(/usr/bin/find "$DIR" -maxdepth 2 -name "*.dmg" -print0 | xargs -0 ls -t | head -1)
-[ -n "$DMG" ] || { echo "❌ keine DMG gefunden"; exit 1; }
-# Auf den vom appcast erwarteten Namen kopieren
-cp "$DMG" "$DIR/Humibeam.dmg"
+# build.sh legt die DMG immer unter $DIR/Humibeam.dmg ab.
+DMG="$DIR/Humibeam.dmg"
+[ -f "$DMG" ] || { echo "❌ keine DMG gefunden ($DMG)"; exit 1; }
 
 echo "▶︎ Aktualisiere appcast.json (Repo + Website-Ordner für humibeam.com)"
 APPCAST=$(cat <<JSON
