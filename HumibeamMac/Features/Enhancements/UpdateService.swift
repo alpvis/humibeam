@@ -17,8 +17,11 @@ struct UpdateInfo: Codable, Equatable {
 @Observable
 @MainActor
 final class UpdateService {
-    // Hosting der Update-Info (anpassbar). GitHub raw der Humibeam-Releases.
-    static let feedURL = URL(string: "https://raw.githubusercontent.com/alpvis/humibeam/main/appcast.json")!
+    // Update-Feed: zuerst die eigene Domain, dann GitHub raw als Fallback.
+    static let feedURLs: [URL] = [
+        URL(string: "https://humibeam.com/appcast.json")!,
+        URL(string: "https://raw.githubusercontent.com/alpvis/humibeam/main/appcast.json")!,
+    ]
 
     var available: UpdateInfo?
     var isChecking = false
@@ -44,25 +47,32 @@ final class UpdateService {
         if !silent { statusText = "Suche nach Updates \u{2026}" }
         defer { isChecking = false }
 
-        do {
-            var request = URLRequest(url: Self.feedURL)
-            request.cachePolicy = .reloadIgnoringLocalCacheData
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-                if !silent { statusText = "Keine Update-Info erreichbar." }
-                return
+        var fetched: UpdateInfo?
+        for url in Self.feedURLs {
+            do {
+                var request = URLRequest(url: url)
+                request.cachePolicy = .reloadIgnoringLocalCacheData
+                request.timeoutInterval = 8
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { continue }
+                fetched = try JSONDecoder().decode(UpdateInfo.self, from: data)
+                break
+            } catch {
+                lastError = error.localizedDescription
+                continue
             }
-            let info = try JSONDecoder().decode(UpdateInfo.self, from: data)
-            if info.build > currentBuild {
-                available = info
-                statusText = "Update \(info.version) verf\u{00FC}gbar."
-            } else {
-                available = nil
-                if !silent { statusText = "Humibeam ist aktuell (\(currentVersion))." }
-            }
-        } catch {
-            if !silent { statusText = "Update-Pr\u{00FC}fung fehlgeschlagen." }
-            lastError = error.localizedDescription
+        }
+
+        guard let info = fetched else {
+            if !silent { statusText = "Keine Update-Info erreichbar." }
+            return
+        }
+        if info.build > currentBuild {
+            available = info
+            statusText = "Update \(info.version) verf\u{00FC}gbar."
+        } else {
+            available = nil
+            if !silent { statusText = "Humibeam ist aktuell (\(currentVersion))." }
         }
     }
 

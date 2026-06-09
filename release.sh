@@ -27,8 +27,8 @@ DMG=$(/usr/bin/find "$DIR" -maxdepth 2 -name "*.dmg" -print0 | xargs -0 ls -t | 
 # Auf den vom appcast erwarteten Namen kopieren
 cp "$DMG" "$DIR/Humibeam.dmg"
 
-echo "▶︎ Aktualisiere appcast.json"
-cat > appcast.json <<JSON
+echo "▶︎ Aktualisiere appcast.json (Repo + Website-Ordner für humibeam.com)"
+APPCAST=$(cat <<JSON
 {
   "version": "$VERSION",
   "build": $BUILD,
@@ -37,12 +37,15 @@ cat > appcast.json <<JSON
   "minOS": "13.0"
 }
 JSON
+)
+echo "$APPCAST" > appcast.json
+echo "$APPCAST" > site/appcast.json
 
 echo "▶︎ GitHub-Release $TAG anlegen + DMG hochladen"
 gh release create "$TAG" "$DIR/Humibeam.dmg" --title "humibeam $VERSION" --notes "$NOTES"
 
 echo "▶︎ appcast.json + Version committen & pushen"
-git add appcast.json HumibeamMac/project.yml
+git add appcast.json site/appcast.json HumibeamMac/project.yml
 git commit -m "Release $VERSION (build $BUILD)"
 git push origin main
 
