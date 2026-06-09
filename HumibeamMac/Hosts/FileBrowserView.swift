@@ -76,10 +76,13 @@ struct FileBrowserView: View {
                 }
             }
             .contentShape(Rectangle())
-            .onTapGesture(count: 2) {
+            // macOS: List frisst den Einfach-Klick für die Zeilen-Auswahl, wodurch
+            // `.onTapGesture(count: 2)` oft nicht feuert. `simultaneousGesture` läuft
+            // parallel zur Auswahl und macht den Doppelklick zuverlässig.
+            .simultaneousGesture(TapGesture(count: 2).onEnded {
                 if file.isDirectory { Task { await shell.navigate(tab, into: file) } }
                 else { Task { await shell.openForEdit(tab, file: file) } }
-            }
+            })
             .contextMenu {
                 if file.isDirectory {
                     Button("Als .tar.gz herunterladen…") { downloadFolderViaPanel(file) }
