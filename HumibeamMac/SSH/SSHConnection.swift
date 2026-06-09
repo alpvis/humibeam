@@ -56,17 +56,29 @@ protocol SSHHostKeyVerifier: AnyObject {
 /// One SSH connection. Owns the NIO channel; supports a PTY shell plus
 /// concurrent exec channels (uploads, commands) multiplexed over the same socket.
 final class SSHConnection {
+    /// Bastion to route through (SSH ProxyJump): we connect to it, tunnel to the real target,
+    /// and run this SSH session through that tunnel.
+    struct ProxyJump {
+        let credentials: SSHCredentials
+        weak var verifier: SSHHostKeyVerifier?
+    }
+
     private let credentials: SSHCredentials
     private weak var hostKeyVerifier: SSHHostKeyVerifier?
+    private let proxyJump: ProxyJump?
     private let group: EventLoopGroup
     private let ownsGroup: Bool
     private var channel: Channel?
+    private var jumpConnection: SSHConnection?
+    private var jumpForward: LocalForward?
 
     init(credentials: SSHCredentials,
          hostKeyVerifier: SSHHostKeyVerifier? = nil,
+         proxyJump: ProxyJump? = nil,
          group: EventLoopGroup? = nil) {
         self.credentials = credentials
         self.hostKeyVerifier = hostKeyVerifier
+        self.proxyJump = proxyJump
         if let group {
             self.group = group
             self.ownsGroup = false
@@ -79,6 +91,21 @@ final class SSHConnection {
     var isConnected: Bool { channel?.isActive ?? false }
 
     func connect() async throws {
+        // Decide the actual TCP endpoint: direct, or through a bastion tunnel (ProxyJump).
+        var targetHost = credentials.host
+        var targetPort = credentials.port
+        if let proxy = proxyJump {
+            let jump = SSHConnection(credentials: proxy.credentials, hostKeyVerifier: proxy.verifier)
+            try await jump.connect()
+            let forward = try await jump.startLocalForward(localPort: 0,
+                                                           targetHost: credentials.host,
+                                                           targetPort: credentials.port)
+            self.jumpConnection = jump
+            self.jumpForward = forward
+            targetHost = "127.0.0.1"
+            targetPort = forward.localPort
+        }
+
         let authDelegate = UserAuthDelegate(username: credentials.username, method: credentials.auth)
         let serverDelegate = HostKeyDelegate(host: credentials.host, port: credentials.port, verifier: hostKeyVerifier)
         let config = SSHClientConfiguration(userAuthDelegate: authDelegate, serverAuthDelegate: serverDelegate)
@@ -93,13 +120,17 @@ final class SSHConnection {
             .channelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
             .channelOption(ChannelOptions.socketOption(.so_keepalive), value: 1)
 
-        let ch = try await bootstrap.connect(host: credentials.host, port: credentials.port).get()
+        let ch = try await bootstrap.connect(host: targetHost, port: targetPort).get()
         self.channel = ch
     }
 
     func close() async {
         try? await channel?.close().get()
         channel = nil
+        jumpForward?.close()
+        jumpForward = nil
+        await jumpConnection?.close()
+        jumpConnection = nil
         if ownsGroup { try? await group.shutdownGracefully() }
     }
 

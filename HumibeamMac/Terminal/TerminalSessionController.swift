@@ -48,6 +48,7 @@ final class TerminalSessionController: NSObject, TerminalViewDelegate {
     // Reconnect
     var autoReconnect = true
     private var lastCredentials: SSHCredentials?
+    private var lastProxy: SSHConnection.ProxyJump?
     private var userInitiatedDisconnect = false
     private var reconnectAttempts = 0
     private let maxReconnectAttempts = 5
@@ -67,11 +68,12 @@ final class TerminalSessionController: NSObject, TerminalViewDelegate {
 
     // MARK: - Lifecycle
 
-    func connect(_ credentials: SSHCredentials) {
+    func connect(_ credentials: SSHCredentials, proxy: SSHConnection.ProxyJump? = nil) {
         lastCredentials = credentials
+        lastProxy = proxy
         userInitiatedDisconnect = false
         onStatus?("verbinde zu \(credentials.username)@\(credentials.host)…")
-        let conn = SSHConnection(credentials: credentials, hostKeyVerifier: knownHosts)
+        let conn = SSHConnection(credentials: credentials, hostKeyVerifier: knownHosts, proxyJump: proxy)
         self.connection = conn
 
         let terminal = terminalView.getTerminal()
@@ -112,9 +114,10 @@ final class TerminalSessionController: NSObject, TerminalViewDelegate {
             reconnectAttempts += 1
             onStatus?("Verbindung verloren – Reconnect \(reconnectAttempts)/\(maxReconnectAttempts)…")
             let delay = Double(min(reconnectAttempts, 4)) // 1,2,3,4s backoff
+            let proxy = lastProxy
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
                 guard let self, self.connection == nil, !self.userInitiatedDisconnect else { return }
-                self.connect(creds)
+                self.connect(creds, proxy: proxy)
             }
         } else {
             onStatus?("Verbindung geschlossen.")

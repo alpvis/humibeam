@@ -25,7 +25,7 @@ struct ProfilesView: View {
         }
         .frame(minWidth: 460, minHeight: 380)
         .sheet(isPresented: $showingEditor) {
-            HostEditorView(host: editingHost ?? SSHHost()) { saved in
+            HostEditorView(host: editingHost ?? SSHHost(), allHosts: shell.hostStore.hosts) { saved in
                 if shell.hostStore.hosts.contains(where: { $0.id == saved.id }) {
                     shell.hostStore.update(saved)
                 } else {

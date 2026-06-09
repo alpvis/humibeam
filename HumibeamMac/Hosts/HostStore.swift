@@ -26,6 +26,8 @@ struct SSHHost: Identifiable, Codable, Hashable {
     var importedKeyPath: String? = nil
     /// Single character that, combined with ⌘, launches/focuses this session (e.g. "1", "h"). Optional.
     var shortcut: String? = nil
+    /// Optional bastion: route this connection through another saved host (SSH ProxyJump).
+    var proxyJumpHostID: UUID? = nil
 
     var displayName: String {
         let n = name.trimmingCharacters(in: .whitespaces)
@@ -69,6 +71,13 @@ final class HostStore {
     }
 
     /// Builds the SSH credentials for a host, pulling secrets from the Keychain / key files.
+    /// Credentials for the bastion this host jumps through, if any (and it isn't itself).
+    func proxyCredentials(for host: SSHHost) throws -> SSHCredentials? {
+        guard let jumpID = host.proxyJumpHostID, jumpID != host.id,
+              let jump = hosts.first(where: { $0.id == jumpID }) else { return nil }
+        return try credentials(for: jump)
+    }
+
     func credentials(for host: SSHHost) throws -> SSHCredentials {
         let auth: SSHAuthMethod
         switch host.authKind {

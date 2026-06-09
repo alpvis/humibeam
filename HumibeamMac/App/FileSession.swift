@@ -58,10 +58,11 @@ final class FileSession: Identifiable {
         }
     }
 
-    init(host: SSHHost, credentials: SSHCredentials, knownHosts: KnownHostsStore) {
+    init(host: SSHHost, credentials: SSHCredentials, knownHosts: KnownHostsStore,
+         proxy: SSHConnection.ProxyJump? = nil) {
         self.host = host
         self.title = "Dateien — \(host.displayName)"
-        self.connection = SSHConnection(credentials: credentials, hostKeyVerifier: knownHosts)
+        self.connection = SSHConnection(credentials: credentials, hostKeyVerifier: knownHosts, proxyJump: proxy)
     }
 
     // MARK: - Lifecycle

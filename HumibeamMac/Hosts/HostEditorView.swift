@@ -6,6 +6,7 @@ struct HostEditorView: View {
     @State var host: SSHHost
     @State private var password: String = ""
     @State private var showCopiedKey = false
+    var allHosts: [SSHHost] = []
     let onSave: (SSHHost) -> Void
 
     var body: some View {
@@ -77,6 +78,19 @@ struct HostEditorView: View {
                     }
                     Text("Eine Taste (z. B. 1 oder H). Mit ⌘ startet sie diese Verbindung, solange humibeam aktiv ist.")
                         .font(.caption2).foregroundStyle(.secondary)
+                }
+
+                if !allHosts.filter({ $0.id != host.id }).isEmpty {
+                    Section("Über Bastion (ProxyJump, optional)") {
+                        Picker("Bastion", selection: $host.proxyJumpHostID) {
+                            Text("Direkt verbinden").tag(UUID?.none)
+                            ForEach(allHosts.filter { $0.id != host.id }) { h in
+                                Text(h.displayName).tag(UUID?.some(h.id))
+                            }
+                        }
+                        Text("Die Verbindung wird durch dieses Profil getunnelt (wie ssh -J).")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
                 }
             }
             .formStyle(.grouped)

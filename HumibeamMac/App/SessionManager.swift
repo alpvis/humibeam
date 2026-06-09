@@ -207,8 +207,10 @@ final class SessionManager: NSObject, NSWindowDelegate {
         let creds: SSHCredentials
         do { creds = try shell.hostStore.credentials(for: host) }
         catch { NSSound.beep(); return }
+        let proxy = (try? shell.hostStore.proxyCredentials(for: host)).flatMap { $0 }
+            .map { SSHConnection.ProxyJump(credentials: $0, verifier: shell.knownHosts) }
 
-        let session = FileSession(host: host, credentials: creds, knownHosts: shell.knownHosts)
+        let session = FileSession(host: host, credentials: creds, knownHosts: shell.knownHosts, proxy: proxy)
         fileSessions.append(session)
         let window = makeWindow(title: session.title, id: session.id,
                                 content: AnyView(FileManagerView(session: session, sessions: self)))

@@ -103,9 +103,11 @@ final class HumibeamShell {
 
         do {
             let creds = try hostStore.credentials(for: host)
+            let proxy = (try? hostStore.proxyCredentials(for: host)).flatMap { $0 }
+                .map { SSHConnection.ProxyJump(credentials: $0, verifier: knownHosts) }
             tabs.append(tab)
             selectedTabID = tab.id
-            controller.connect(creds)
+            controller.connect(creds, proxy: proxy)
             return tab
         } catch {
             tab.status = "Fehler: \(error.localizedDescription)"
