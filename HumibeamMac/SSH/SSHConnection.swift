@@ -27,6 +27,7 @@ enum SSHError: Error, LocalizedError {
     case uploadFailed(Int32)
     case commandFailed(Int32, String)
     case hostKeyRejected
+    case hostKeyChanged(host: String, pinned: String, presented: String)
 
     var errorDescription: String? {
         switch self {
@@ -35,6 +36,10 @@ enum SSHError: Error, LocalizedError {
         case .uploadFailed(let s): return "Upload fehlgeschlagen (exit \(s))."
         case .commandFailed(let s, let m): return "Befehl fehlgeschlagen (exit \(s)): \(m)"
         case .hostKeyRejected: return "Host-Key abgelehnt."
+        case .hostKeyChanged(let host, let pinned, let presented):
+            return "⚠️ HOST-KEY VON \(host) HAT SICH GEÄNDERT — möglicher Angriff! "
+                 + "Gepinnt: \(pinned), jetzt: \(presented). "
+                 + "Falls der Server bewusst neu aufgesetzt wurde: Profil → Host-Key zurücksetzen."
         }
     }
 }

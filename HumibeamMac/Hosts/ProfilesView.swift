@@ -98,6 +98,22 @@ struct ProfilesView: View {
         .padding(.vertical, 4)
         .contentShape(Rectangle())
         .onTapGesture(count: 2) { sessions.openSSHSession(host) }
+        .contextMenu {
+            Button("Terminal verbinden") { sessions.openSSHSession(host) }
+            Button("Dateien (SFTP)") { sessions.openFileSession(host) }
+            Divider()
+            if let fp = shell.knownHosts.pinnedFingerprint(host: host.host, port: host.port) {
+                Text("Host-Key: \(fp)")
+                Button("Host-Key zurücksetzen") {
+                    shell.knownHosts.forget(host: host.host, port: host.port)
+                }
+            } else {
+                Text("Host-Key noch nicht gepinnt")
+            }
+            Divider()
+            Button("Bearbeiten") { editingHost = host; showingEditor = true }
+            Button("Löschen", role: .destructive) { shell.hostStore.delete(host) }
+        }
     }
 
     private var emptyState: some View {
