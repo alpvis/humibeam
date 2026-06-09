@@ -16,6 +16,9 @@ struct FileManagerView: View {
     @State private var sortKey: SortKey = .name
     @State private var sortAscending = true
     @State private var infoEntry: RemoteEntry?
+    @State private var showLocalPane = false
+    @State private var localPane = LocalPane()
+    @State private var localSelection: LocalEntry.ID?
 
     enum SortKey { case name, size, modified }
 
@@ -61,7 +64,16 @@ struct FileManagerView: View {
             Divider()
             pathBar
             Divider()
-            fileList
+            if showLocalPane {
+                HSplitView {
+                    LocalPaneView(local: localPane, selection: $localSelection, onUpload: { url in
+                        Task { await session.upload(urls: [url]); localPane.refresh() }
+                    })
+                    fileList
+                }
+            } else {
+                fileList
+            }
             Divider()
             statusBar
         }
@@ -152,6 +164,22 @@ struct FileManagerView: View {
                 Image(systemName: showHidden ? "eye" : "eye.slash")
             }
             .help(showHidden ? "Versteckte Dateien ausblenden" : "Versteckte Dateien zeigen")
+
+            Button { showLocalPane.toggle(); if showLocalPane { localPane.refresh() } } label: {
+                Image(systemName: showLocalPane ? "rectangle.split.2x1.fill" : "rectangle.split.2x1")
+            }
+            .help("Lokales Verzeichnis daneben (Dual-Pane)")
+
+            if showLocalPane {
+                Menu {
+                    Button("Lokal → Server (fehlende/geänderte hochladen)") { Task { await syncLocalToRemote() } }
+                    Button("Server → Lokal (fehlende/geänderte herunterladen)") { Task { await syncRemoteToLocal() } }
+                    Divider()
+                    Text("Abgleich vergleicht nur das aktuelle Verzeichnis (nicht rekursiv).")
+                } label: { Image(systemName: "arrow.triangle.2.circlepath") }
+                    .menuStyle(.borderlessButton).fixedSize()
+                    .help("Verzeichnisse abgleichen").disabled(!session.connected)
+            }
 
             if session.busy { ProgressView().controlSize(.small).scaleEffect(0.7) }
 
@@ -444,6 +472,27 @@ struct FileManagerView: View {
     private func downloadSelected() {
         guard let entry = selectedEntry else { return }
         if entry.isDirectory { downloadFolder(entry) } else { download(entry) }
+    }
+
+    /// Uploads local files that are missing on the server or differ in size (current dir only).
+    private func syncLocalToRemote() async {
+        let remoteByName = Dictionary(session.entries.map { ($0.name, $0) }, uniquingKeysWith: { a, _ in a })
+        for local in localPane.entries where !local.isDirectory {
+            if let r = remoteByName[local.name], r.size == local.size { continue }
+            await session.upload(urls: [local.url])
+        }
+        await session.refresh()
+        localPane.refresh()
+    }
+
+    /// Downloads remote files that are missing locally or differ in size (current dir only).
+    private func syncRemoteToLocal() async {
+        let localByName = Dictionary(localPane.entries.map { ($0.name, $0) }, uniquingKeysWith: { a, _ in a })
+        for remote in session.entries where !remote.isDirectory {
+            if let l = localByName[remote.name], l.size == remote.size { continue }
+            _ = await session.fetch(remote, to: localPane.path.appendingPathComponent(remote.name))
+        }
+        localPane.refresh()
     }
 
     private func quickLook(_ entry: RemoteEntry) {
