@@ -179,6 +179,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         guard let menu = sessionsMenu else { return }
         menu.removeAllItems()
 
+        let palette = NSMenuItem(title: "Befehls-Palette…", action: #selector(openPaletteAction), keyEquivalent: "k")
+        palette.target = self
+        menu.addItem(palette)
+        menu.addItem(.separator())
+
         let local = NSMenuItem(title: "Lokales Terminal", action: #selector(openLocalAction), keyEquivalent: "t")
         local.target = self
         menu.addItem(local)
@@ -208,6 +213,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc private func fontBiggerAction() { shell.terminalFontSize = min(28, shell.terminalFontSize + 1) }
     @objc private func fontSmallerAction() { shell.terminalFontSize = max(9, shell.terminalFontSize - 1) }
 
+    @objc private func openPaletteAction() { sessions.toggleCommandPalette() }
     @objc private func openLocalAction() { sessions.openLocalSession() }
     @objc private func openProfilesAction() { sessions.openProfilesWindow() }
     @objc private func openProfileAction(_ sender: NSMenuItem) {

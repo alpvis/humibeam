@@ -17,8 +17,44 @@ final class SessionManager: NSObject, NSWindowDelegate {
     /// window per session id (an SSH tab id or a local session id)
     @ObservationIgnored private var windows: [UUID: NSWindow] = [:]
     @ObservationIgnored private var profilesWindow: NSWindow?
+    @ObservationIgnored private var paletteWindow: NSWindow?
 
     private var anyWindowOpen: Bool { !windows.isEmpty || profilesWindow != nil }
+
+    // MARK: - Command palette (⌘K)
+
+    func toggleCommandPalette() {
+        if paletteWindow != nil { closeCommandPalette(); return }
+        NSApp.setActivationPolicy(.regular)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 380),
+                              styleMask: [.titled, .fullSizeContentView, .closable],
+                              backing: .buffered, defer: false)
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.isMovableByWindowBackground = true
+        window.level = .floating
+        window.backgroundColor = .clear
+        window.isOpaque = false
+        window.hasShadow = true
+        window.contentViewController = NSHostingController(
+            rootView: CommandPaletteView(sessions: self, onClose: { [weak self] in self?.closeCommandPalette() }))
+        window.isReleasedWhenClosed = false
+        window.delegate = self
+        if let screen = NSScreen.main {
+            let f = screen.visibleFrame
+            window.setFrameTopLeftPoint(NSPoint(x: f.midX - 280, y: f.midY + 200))
+        } else {
+            window.center()
+        }
+        paletteWindow = window
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func closeCommandPalette() {
+        paletteWindow?.close()
+        paletteWindow = nil
+    }
 
     init(shell: HumibeamShell) {
         self.shell = shell
@@ -273,6 +309,11 @@ final class SessionManager: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
 
+        if window === paletteWindow {
+            paletteWindow = nil
+            if !anyWindowOpen { NSApp.setActivationPolicy(.accessory) }
+            return
+        }
         if window === profilesWindow {
             profilesWindow = nil
             if !anyWindowOpen { NSApp.setActivationPolicy(.accessory) }

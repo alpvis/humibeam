@@ -199,14 +199,22 @@ struct MenuBarView: View {
                 ForEach(active) { hubActiveRow($0) }
             }
 
-            Button {
-                sessions.openProfilesWindow(); dismissPopover()
-            } label: {
-                Label("Profile verwalten…", systemImage: "slider.horizontal.3")
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(.secondary)
+            HStack(spacing: 14) {
+                Button {
+                    dismissPopover(); sessions.toggleCommandPalette()
+                } label: {
+                    Label("Befehls-Palette ⌘K", systemImage: "command")
+                        .font(.system(size: 11.5)).foregroundStyle(.secondary)
+                }
+                .buttonStyle(SubtleButtonStyle())
+                Button {
+                    sessions.openProfilesWindow(); dismissPopover()
+                } label: {
+                    Label("Profile verwalten…", systemImage: "slider.horizontal.3")
+                        .font(.system(size: 11.5)).foregroundStyle(.secondary)
+                }
+                .buttonStyle(SubtleButtonStyle())
             }
-            .buttonStyle(SubtleButtonStyle())
             .padding(.top, 2)
         }
     }
