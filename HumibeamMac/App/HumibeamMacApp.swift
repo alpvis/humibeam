@@ -98,6 +98,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             name: .claudeAlert,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            forName: .manageSnippets, object: nil, queue: .main) { [weak self] _ in
+            self?.sessions.openSnippetsWindow()
+        }
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
 
         DispatchQueue.main.async { [weak self] in

@@ -5,6 +5,32 @@ struct Snippet: Identifiable, Codable, Hashable {
     var id = UUID()
     var title: String
     var command: String
+
+    static let placeholderRegex = try? NSRegularExpression(pattern: #"\{\{\s*([^}]+?)\s*\}\}"#)
+
+    /// Distinct `{{name}}` placeholders in the command, in order of first appearance.
+    var placeholders: [String] {
+        guard let regex = Self.placeholderRegex else { return [] }
+        let ns = command as NSString
+        var seen: [String] = []
+        for m in regex.matches(in: command, range: NSRange(location: 0, length: ns.length)) {
+            let name = ns.substring(with: m.range(at: 1)).trimmingCharacters(in: .whitespaces)
+            if !name.isEmpty, !seen.contains(name) { seen.append(name) }
+        }
+        return seen
+    }
+
+    /// The command with each `{{name}}` replaced by the supplied value.
+    func filled(with values: [String: String]) -> String {
+        guard let regex = Self.placeholderRegex else { return command }
+        let ns = command as NSString
+        let mutable = NSMutableString(string: command)
+        for m in regex.matches(in: command, range: NSRange(location: 0, length: ns.length)).reversed() {
+            let name = ns.substring(with: m.range(at: 1)).trimmingCharacters(in: .whitespaces)
+            mutable.replaceCharacters(in: m.range, with: values[name] ?? "")
+        }
+        return mutable as String
+    }
 }
 
 /// Quick-insert command snippets, sent straight into the active terminal session.

@@ -351,6 +351,8 @@ private struct TerminalToolbar: View {
     @Bindable var tab: TerminalTab
     var onClose: () -> Void = {}
     @State private var showSuggest = false
+    @State private var fillSnippet: Snippet?
+    @State private var fillValues: [String: String] = [:]
 
     var body: some View {
         HStack(spacing: 12) {
@@ -410,11 +412,14 @@ private struct TerminalToolbar: View {
             .foregroundStyle(shell.broadcastInput ? .orange : .primary)
             Menu {
                 ForEach(shell.snippets.snippets) { snip in
-                    Button(snip.title) { tab.controller.sendToShell(snip.command) }
+                    Button(snip.title) { runSnippet(snip) }
                 }
+                Divider()
+                Button("Snippets verwalten…") { NotificationCenter.default.post(name: .manageSnippets, object: nil) }
             } label: { Image(systemName: "text.append") }
                 .menuStyle(.borderlessButton).fixedSize()
                 .help("Snippets").disabled(!tab.connected)
+                .sheet(item: $fillSnippet) { snip in snippetFillSheet(snip) }
             Button { shell.toggleSplit(tab) } label: {
                 Image(systemName: tab.isSplit ? "rectangle.split.2x1.fill" : "rectangle.split.2x1")
             }
@@ -432,6 +437,44 @@ private struct TerminalToolbar: View {
                 .help("Sitzung schließen")
         }
         .padding(.horizontal, 12).padding(.vertical, 7).background(.bar)
+    }
+
+    private func runSnippet(_ snip: Snippet) {
+        if snip.placeholders.isEmpty {
+            tab.controller.sendToShell(snip.command)
+        } else {
+            fillValues = Dictionary(uniqueKeysWithValues: snip.placeholders.map { ($0, "") })
+            fillSnippet = snip
+        }
+    }
+
+    @ViewBuilder
+    private func snippetFillSheet(_ snip: Snippet) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(snip.title).font(.headline)
+            Text(snip.command).font(.system(.caption, design: .monospaced)).foregroundStyle(.secondary)
+                .lineLimit(3).fixedSize(horizontal: false, vertical: true)
+            ForEach(snip.placeholders, id: \.self) { name in
+                HStack {
+                    Text(name).frame(width: 110, alignment: .leading).font(.callout)
+                    TextField(name, text: Binding(
+                        get: { fillValues[name] ?? "" },
+                        set: { fillValues[name] = $0 }))
+                    .textFieldStyle(.roundedBorder)
+                }
+            }
+            HStack {
+                Spacer()
+                Button("Abbrechen", role: .cancel) { fillSnippet = nil }
+                Button("Senden") {
+                    tab.controller.sendToShell(snip.filled(with: fillValues))
+                    fillSnippet = nil
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding()
+        .frame(width: 420)
     }
 
     private func uploadViaPanel() {

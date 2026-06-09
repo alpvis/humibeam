@@ -659,6 +659,8 @@ extension Notification.Name {
     static let toggleTerminalDictation = Notification.Name("toggleTerminalDictation")
     /// A Claude Code session wants attention. userInfo: sessionID (UUID), title, body (String).
     static let claudeAlert = Notification.Name("claudeAlert")
+    /// Open the snippet manager window.
+    static let manageSnippets = Notification.Name("manageSnippets")
 }
 
 private struct PasteTarget {

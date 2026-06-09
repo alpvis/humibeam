@@ -18,8 +18,26 @@ final class SessionManager: NSObject, NSWindowDelegate {
     @ObservationIgnored private var windows: [UUID: NSWindow] = [:]
     @ObservationIgnored private var profilesWindow: NSWindow?
     @ObservationIgnored private var paletteWindow: NSWindow?
+    @ObservationIgnored private var snippetsWindow: NSWindow?
 
-    private var anyWindowOpen: Bool { !windows.isEmpty || profilesWindow != nil }
+    private var anyWindowOpen: Bool { !windows.isEmpty || profilesWindow != nil || snippetsWindow != nil }
+
+    func openSnippetsWindow() {
+        if let w = snippetsWindow {
+            NSApp.setActivationPolicy(.regular); w.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true); return
+        }
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 420),
+                              styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        window.title = "Snippets"
+        window.contentViewController = NSHostingController(rootView: SnippetsView(store: shell.snippets))
+        window.isReleasedWhenClosed = false
+        window.delegate = self
+        window.center()
+        snippetsWindow = window
+        NSApp.setActivationPolicy(.regular)
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
 
     // MARK: - Command palette (⌘K)
 
@@ -316,6 +334,11 @@ final class SessionManager: NSObject, NSWindowDelegate {
         }
         if window === profilesWindow {
             profilesWindow = nil
+            if !anyWindowOpen { NSApp.setActivationPolicy(.accessory) }
+            return
+        }
+        if window === snippetsWindow {
+            snippetsWindow = nil
             if !anyWindowOpen { NSApp.setActivationPolicy(.accessory) }
             return
         }
