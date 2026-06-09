@@ -28,6 +28,10 @@ final class TerminalTab: Identifiable {
     var splitStatus = ""
     var isSplit: Bool { splitController != nil }
 
+    // Claude Code permission prompt → Allow/Deny buttons
+    var awaitingApproval = false
+    var approvalAllowAlways = false
+
     // AI helper
     var claudeDetected = false
     var showAIPanel = false

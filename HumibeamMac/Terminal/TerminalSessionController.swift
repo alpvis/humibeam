@@ -28,6 +28,12 @@ final class TerminalSessionController: NSObject, TerminalViewDelegate {
     var onClaudeDetected: (() -> Void)?
     private static let transcriptCap = 16_000
 
+    /// True when Claude Code is showing a permission prompt ("Do you want to proceed?").
+    private(set) var awaitingApproval = false
+    /// Whether the prompt offers a "don't ask again" (option 2) choice.
+    private(set) var approvalAllowAlways = false
+    var onApprovalChange: (() -> Void)?
+
     // Reconnect
     var autoReconnect = true
     private var lastCredentials: SSHCredentials?
@@ -132,6 +138,34 @@ final class TerminalSessionController: NSObject, TerminalViewDelegate {
                 onClaudeDetected?()
             }
         }
+        detectApprovalPrompt()
+    }
+
+    /// Heuristically detects Claude Code's permission prompt in the recent output so the UI can
+    /// surface Allow/Deny buttons. Looks only at the tail (the prompt is the last thing on screen).
+    private func detectApprovalPrompt() {
+        let tail = transcript.suffix(700).lowercased()
+        let hasYes = tail.contains("1. yes") || tail.contains("❯ 1.")
+        let hasNo = tail.contains("no, and tell claude") || tail.contains("3. no") || tail.contains("2. no")
+        let prompt = hasYes && (hasNo || tail.contains("do you want"))
+        let allowAlways = tail.contains("don't ask again") || tail.contains("don’t ask again")
+        if prompt != awaitingApproval || allowAlways != approvalAllowAlways {
+            awaitingApproval = prompt
+            approvalAllowAlways = allowAlways
+            onApprovalChange?()
+        }
+    }
+
+    /// Sends a response to Claude Code's permission prompt (the option number / Esc).
+    func approve() { sendApproval("1") }
+    func approveAlways() { sendApproval("2") }
+    func deny() { sendApproval("\u{1b}") } // Esc → "No, and tell Claude…"
+
+    private func sendApproval(_ keys: String) {
+        sendToShell(keys)
+        awaitingApproval = false
+        approvalAllowAlways = false
+        onApprovalChange?()
     }
 
     /// Strips CSI/OSC escape sequences so the AI sees readable text.

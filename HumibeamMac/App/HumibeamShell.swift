@@ -82,6 +82,10 @@ final class HumibeamShell {
             tab?.status = "Verbindung geschlossen."
         }
         controller.onClaudeDetected = { [weak tab] in tab?.claudeDetected = true }
+        controller.onApprovalChange = { [weak tab, weak controller] in
+            tab?.awaitingApproval = controller?.awaitingApproval ?? false
+            tab?.approvalAllowAlways = controller?.approvalAllowAlways ?? false
+        }
 
         do {
             let creds = try hostStore.credentials(for: host)

@@ -181,6 +181,10 @@ private struct TabContent: View {
                 SearchBar(tab: tab)
                 Divider()
             }
+            if tab.awaitingApproval {
+                approvalBar
+                Divider()
+            }
             terminals
                 .padding(12)
                 .frame(minWidth: 480, minHeight: 300)
@@ -209,6 +213,25 @@ private struct TabContent: View {
         } else {
             TerminalRepresentable(controller: tab.controller)
         }
+    }
+
+    private var approvalBar: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "hand.raised.fill").foregroundStyle(.orange)
+            Text("Claude möchte etwas ausführen — erlauben?")
+                .font(.callout).fontWeight(.medium)
+            Spacer()
+            Button("Ablehnen") { tab.controller.deny() }
+                .keyboardShortcut(.cancelAction)
+            if tab.approvalAllowAlways {
+                Button("Immer erlauben") { tab.controller.approveAlways() }
+            }
+            Button("Erlauben") { tab.controller.approve() }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(Color.orange.opacity(0.12))
     }
 
     private var statusBar: some View {
