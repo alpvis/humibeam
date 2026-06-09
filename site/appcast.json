@@ -1,7 +1,7 @@
 {
-  "version": "2.1",
-  "build": 21,
-  "dmgURL": "https://github.com/alpvis/humibeam/releases/download/v2.1/Humibeam.dmg",
-  "notes": "Alle 7 Features + Auto-Update: Sitzungs-Wiederherstellung, Claude-Benachrichtigungen, Befehls-Palette (Cmd+K), Snippets mit Variablen, Quick Look, ProxyJump/Bastion, Datei-Manager Dual-Pane + Sync.",
+  "version": "3.0",
+  "build": 30,
+  "dmgURL": "https://github.com/alpvis/humibeam/releases/download/v3.0/Humibeam.dmg",
+  "notes": "humibeam 3.0 — neues Studio-Design: ein Hauptfenster mit Sidebar (Profile + Sitzungen) und Umschalter Terminal / Dateien / Split. Integrierter Datei-Manager über dieselbe SSH-Verbindung, stabiler Hintergrund-Reconnect bei Netzverlust, aufgeräumte Toolbar (Diktat als Nebenfunktion), neues Humiqa-Icon.",
   "minOS": "13.0"
 }
