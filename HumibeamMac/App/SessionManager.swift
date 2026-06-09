@@ -156,6 +156,12 @@ final class SessionManager: NSObject, NSWindowDelegate {
 
     func isOpen(_ id: UUID) -> Bool { windows[id] != nil }
 
+    /// True if the session's window is the app's key window AND the app is active (no need to notify).
+    func isFrontmost(_ id: UUID) -> Bool {
+        guard NSApp.isActive, let window = windows[id] else { return false }
+        return window.isKeyWindow
+    }
+
     /// Injects a remote file path into a terminal session for `host` (where Claude Code runs) and
     /// brings that window forward. Prefers an open terminal for the same host. Returns false if none.
     @discardableResult

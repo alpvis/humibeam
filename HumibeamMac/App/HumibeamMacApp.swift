@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import SwiftTerm
+import UserNotifications
 
 @main
 struct HumibeamMacApp: App {
@@ -91,6 +92,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             name: .toggleTerminalDictation,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleClaudeAlert(_:)),
+            name: .claudeAlert,
+            object: nil
+        )
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
 
         DispatchQueue.main.async { [weak self] in
             self?.showOnboardingIfNeeded()
@@ -217,6 +225,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc private func handleDismissPopover() {
         appState.isPopoverShown = false
         popover.performClose(nil)
+    }
+
+    /// A Claude session wants attention — post a desktop notification unless its window is frontmost.
+    @objc private func handleClaudeAlert(_ note: Notification) {
+        guard let info = note.userInfo,
+              let id = info["sessionID"] as? UUID,
+              let title = info["title"] as? String,
+              let body = info["body"] as? String else { return }
+        if sessions.isFrontmost(id) { return } // user is already looking at it
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        let request = UNNotificationRequest(identifier: id.uuidString + "-" + title,
+                                            content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
     }
 
     /// Mic button in a terminal: toggle background dictation. The result is routed straight into

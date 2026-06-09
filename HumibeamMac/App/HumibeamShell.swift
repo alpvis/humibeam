@@ -83,11 +83,22 @@ final class HumibeamShell {
         }
         controller.onClaudeDetected = { [weak tab] in tab?.claudeDetected = true }
         controller.onApprovalChange = { [weak tab, weak controller] in
-            tab?.awaitingApproval = controller?.awaitingApproval ?? false
+            let waiting = controller?.awaitingApproval ?? false
+            tab?.awaitingApproval = waiting
             tab?.approvalAllowAlways = controller?.approvalAllowAlways ?? false
+            if waiting, let tab {
+                Self.postClaudeAlert(tab, title: "Claude wartet auf dich",
+                                     body: "\(tab.host.displayName): Erlaubnis nötig")
+            }
         }
         controller.onPathsChange = { [weak tab, weak controller] in
             tab?.recentPaths = controller?.recentPaths ?? []
+        }
+        controller.onClaudeIdle = { [weak tab] in
+            if let tab {
+                Self.postClaudeAlert(tab, title: "Claude ist fertig",
+                                     body: tab.host.displayName)
+            }
         }
 
         do {
@@ -100,6 +111,12 @@ final class HumibeamShell {
             tab.status = "Fehler: \(error.localizedDescription)"
             return nil
         }
+    }
+
+    private static func postClaudeAlert(_ tab: TerminalTab, title: String, body: String) {
+        NotificationCenter.default.post(name: .claudeAlert, object: nil, userInfo: [
+            "sessionID": tab.id, "title": title, "body": body
+        ])
     }
 
     func closeTab(_ tab: TerminalTab) {

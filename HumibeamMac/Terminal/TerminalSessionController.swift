@@ -37,6 +37,11 @@ final class TerminalSessionController: NSObject, TerminalViewDelegate {
     /// Files Claude Code recently touched (parsed from its tool-call output), newest first.
     private(set) var recentPaths: [String] = []
     var onPathsChange: (() -> Void)?
+
+    /// True while Claude Code is actively working ("esc to interrupt" visible).
+    private var claudeBusy = false
+    /// Fired when Claude transitions from working → idle (a run finished).
+    var onClaudeIdle: (() -> Void)?
     private static let pathRegex = try? NSRegularExpression(
         pattern: #"(?:Update|Read|Write|Edit|MultiEdit|Create|Search)\(([^)\n]{1,200})\)"#)
 
@@ -146,6 +151,18 @@ final class TerminalSessionController: NSObject, TerminalViewDelegate {
         }
         detectApprovalPrompt()
         extractRecentPaths()
+        detectClaudeIdle()
+    }
+
+    /// Tracks Claude's working state via its "esc to interrupt" indicator and fires `onClaudeIdle`
+    /// when a run finishes, so the app can notify the user if the window isn't frontmost.
+    private func detectClaudeIdle() {
+        let busy = transcript.suffix(400).lowercased().contains("esc to interrupt")
+        if busy != claudeBusy {
+            let wasBusy = claudeBusy
+            claudeBusy = busy
+            if wasBusy && !busy { onClaudeIdle?() }
+        }
     }
 
     /// Pulls file paths out of Claude Code's tool-call lines (e.g. "Update(src/foo.py)") so the

@@ -657,6 +657,8 @@ extension Notification.Name {
     static let dismissPopover = Notification.Name("dismissPopover")
     /// Toggle voice dictation routed into the focused terminal session (mic button in a session).
     static let toggleTerminalDictation = Notification.Name("toggleTerminalDictation")
+    /// A Claude Code session wants attention. userInfo: sessionID (UUID), title, body (String).
+    static let claudeAlert = Notification.Name("claudeAlert")
 }
 
 private struct PasteTarget {
