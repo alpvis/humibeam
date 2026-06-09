@@ -7,6 +7,7 @@ import UniformTypeIdentifiers
 /// Finder drag-&-drop upload, and a transfer log. Built on the exec-based file API.
 struct FileManagerView: View {
     @Bindable var session: FileSession
+    let sessions: SessionManager
 
     @State private var selection: RemoteEntry.ID?
     @State private var pathField = ""
@@ -257,6 +258,15 @@ struct FileManagerView: View {
 
     @ViewBuilder
     private func rowMenu(_ entry: RemoteEntry) -> some View {
+        Button {
+            let path = (session.path as NSString).appendingPathComponent(entry.name)
+            if !sessions.giveToTerminal(path: path, host: session.host) {
+                session.status = "Kein Terminal für \(session.host.displayName) offen — öffne ein Terminal und starte claude."
+            }
+        } label: {
+            Label("An Claude senden", systemImage: "sparkles")
+        }
+        Divider()
         if entry.isDirectory {
             Button("Öffnen") { Task { await session.open(entry) } }
             Button("Als .tar.gz laden…") { downloadFolder(entry) }

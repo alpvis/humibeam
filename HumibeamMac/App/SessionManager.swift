@@ -90,7 +90,7 @@ final class SessionManager: NSObject, NSWindowDelegate {
         let session = FileSession(host: host, credentials: creds, knownHosts: shell.knownHosts)
         fileSessions.append(session)
         let window = makeWindow(title: session.title, id: session.id,
-                                content: AnyView(FileManagerView(session: session)))
+                                content: AnyView(FileManagerView(session: session, sessions: self)))
         session.window = window
         windows[session.id] = window
         present(window)
@@ -111,6 +111,18 @@ final class SessionManager: NSObject, NSWindowDelegate {
     }
 
     func isOpen(_ id: UUID) -> Bool { windows[id] != nil }
+
+    /// Injects a remote file path into a terminal session for `host` (where Claude Code runs) and
+    /// brings that window forward. Prefers an open terminal for the same host. Returns false if none.
+    @discardableResult
+    func giveToTerminal(path: String, host: SSHHost) -> Bool {
+        let candidate = shell.tabs.first { $0.host.id == host.id && windows[$0.id] != nil }
+            ?? shell.tabs.first { $0.connected && windows[$0.id] != nil }
+        guard let tab = candidate else { return false }
+        tab.controller.sendToShell(path + " ")
+        focus(tab.id)
+        return true
+    }
 
     /// The SSH session whose window is currently key (for menu commands like search/split).
     func focusedTab() -> TerminalTab? {
