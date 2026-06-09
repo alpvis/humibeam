@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>humibeam — der SSH-Client für Claude Code</title>
+<meta name="description" content="Screenshots, Sprache und Dateien in eine Remote-Claude-Code-Session — über eine SSH-Verbindung. Terminal auf iTerm2-Niveau, Dateitransfer wie Cyberduck, mit KI-Hilfe.">
+<style>
+  :root{
+    --cyan:#00d2ff; --indigo:#5b2be0; --ink:#0d1117; --paper:#0f1020; --fg:#e9eeff; --muted:#a9b2d0;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:var(--fg);
+    background:radial-gradient(1200px 600px at 70% -10%,rgba(0,210,255,.25),transparent),
+               radial-gradient(900px 500px at 10% 10%,rgba(91,43,224,.30),transparent),var(--paper);
+    min-height:100vh}
+  .wrap{max-width:1020px;margin:0 auto;padding:0 24px}
+  header{padding:80px 0 40px;text-align:center}
+  .logo{width:108px;height:108px;border-radius:26px;margin:0 auto 26px;display:grid;place-items:center;
+    background:linear-gradient(150deg,var(--cyan),var(--indigo));box-shadow:0 20px 60px rgba(91,43,224,.5);
+    font:700 56px/1 ui-monospace,Menlo,monospace;color:#fff}
+  h1{font-size:clamp(34px,6vw,60px);letter-spacing:-.02em;line-height:1.05}
+  .grad{background:linear-gradient(90deg,var(--cyan),#b388ff);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .lede{font-size:clamp(17px,2.4vw,22px);color:var(--muted);max-width:680px;margin:22px auto 0}
+  .cta{display:inline-flex;gap:10px;align-items:center;margin-top:34px;padding:14px 26px;border-radius:14px;
+    background:linear-gradient(150deg,var(--cyan),var(--indigo));color:#fff;font-weight:600;text-decoration:none;
+    box-shadow:0 12px 40px rgba(0,210,255,.35)}
+  .sub{margin-top:14px;color:var(--muted);font-size:14px}
+  .killer{margin:60px 0;padding:30px;border:1px solid rgba(255,255,255,.10);border-radius:18px;
+    background:rgba(255,255,255,.03)}
+  .killer h2{font-size:24px;margin-bottom:8px}
+  .killer p{color:var(--muted)}
+  code{font-family:ui-monospace,Menlo,monospace;background:rgba(255,255,255,.08);padding:2px 7px;border-radius:6px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px;margin:24px 0 60px}
+  .card{padding:22px;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:rgba(255,255,255,.03)}
+  .card .ic{font-size:24px;margin-bottom:10px}
+  .card h3{font-size:17px;margin-bottom:6px}
+  .card p{color:var(--muted);font-size:14.5px}
+  .pillars{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin:10px 0 40px}
+  @media(max-width:760px){.pillars{grid-template-columns:1fr}}
+  .pill{padding:18px;border-radius:14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08)}
+  .pill b{color:var(--cyan)}
+  footer{padding:50px 0 70px;text-align:center;color:var(--muted);font-size:13px;border-top:1px solid rgba(255,255,255,.08);margin-top:40px}
+  .tag{display:inline-block;font-size:12px;color:var(--cyan);letter-spacing:.14em;text-transform:uppercase;margin-bottom:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">&gt;_</div>
+    <div class="tag">macOS · SSH · Claude Code</div>
+    <h1>Screenshots in <span class="grad">Claude&nbsp;Code</span><br>über SSH einfügen.</h1>
+    <p class="lede">humibeam ist der SSH-Client, der für agentische CLIs gebaut ist: Bilder, Sprache und Dateien
+      landen in einer Remote-<code>claude</code>-Session — über <b>eine</b> Verbindung, ohne Server-Installation.</p>
+    <a class="cta" href="#download">humibeam laden →</a>
+    <div class="sub">macOS 14+ · Apple Silicon &amp; Intel · eigener OpenAI-Key für die KI-Funktionen</div>
+  </header>
+
+  <section class="killer">
+    <h2>✨ Das, was kein SSH-Client kann</h2>
+    <p>Drück <code>Cmd&nbsp;+&nbsp;V</code> mit einem Screenshot im Terminal — humibeam lädt ihn über die bestehende
+      SSH-Verbindung hoch und tippt den Pfad in die laufende <code>claude</code>-Session. Claude Code liest das Bild.
+      Funktioniert auf jedem nackten Ubuntu-Server, ohne dort etwas zu installieren.</p>
+  </section>
+
+  <div class="pillars">
+    <div class="pill"><b>Terminal</b><br>Tabs, Split-Panes, Suche, Themes, Reconnect, Broadcast — auf iTerm2-Niveau.</div>
+    <div class="pill"><b>Dateien</b><br>SCP/SFTP-Browser: Up/Download, mkdir, chmod, Umbenennen, Ordner als .tar.gz, Remote-Editor.</div>
+    <div class="pill"><b>KI &amp; Sprache</b><br>Diktat ins Terminal, Ausgabe erklären, Fehler beheben, Befehle vorschlagen.</div>
+  </div>
+
+  <div class="grid">
+    <div class="card"><div class="ic">📸</div><h3>Screenshot-Paste</h3><p>Bild kopieren → Cmd+V → Upload → Pfad in der Claude-Session.</p></div>
+    <div class="card"><div class="ic">🎙️</div><h3>Voice-Diktat</h3><p>Hotkey halten, sprechen — der Text wird direkt ins Terminal getippt.</p></div>
+    <div class="card"><div class="ic">🗂️</div><h3>Datei-Browser</h3><p>Drag &amp; Drop rein/raus, Remote-Dateien direkt bearbeiten, Lesezeichen.</p></div>
+    <div class="card"><div class="ic">🔀</div><h3>Port-Forwarding</h3><p><code>ssh -L</code> mit einem Klick — lokale Ports sicher durch den Tunnel.</p></div>
+    <div class="card"><div class="ic">🧠</div><h3>KI-Hilfe</h3><p>Terminal-Ausgabe erklären, Fehler deuten, passende Befehle vorschlagen.</p></div>
+    <div class="card"><div class="ic">🔑</div><h3>Sicher</h3><p>Schlüssel im macOS-Keychain, eigener humibeam-Key oder bestehende SSH-Keys.</p></div>
+  </div>
+
+  <section id="download" class="killer" style="text-align:center">
+    <h2>humibeam testen</h2>
+    <p style="margin:10px auto 22px;max-width:560px">Open-Source-Vorschau. Selbst bauen oder die signierte App laden.</p>
+    <a class="cta" href="https://github.com/alpvis/humibeam">Auf GitHub ansehen →</a>
+  </section>
+
+  <footer>
+    humibeam · entwickelt aus humitext · <a style="color:var(--cyan)" href="https://humibeam.com">humibeam.com</a><br>
+    Betrieben von Blackboat Internet GmbH · Impressum &amp; Datenschutz auf blackboat.com
+  </footer>
+</div>
+</body>
+</html>

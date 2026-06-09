@@ -1,0 +1,126 @@
+import SwiftUI
+
+/// Add/edit a saved SSH connection.
+struct HostEditorView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State var host: SSHHost
+    @State private var password: String = ""
+    @State private var showCopiedKey = false
+    let onSave: (SSHHost) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(host.name.isEmpty ? "Neue Verbindung" : "Verbindung bearbeiten")
+                .font(.title3).bold()
+                .padding()
+
+            Form {
+                Section {
+                    TextField("Name (optional)", text: $host.name)
+                    TextField("Host / IP", text: $host.host)
+                    HStack {
+                        TextField("Benutzer", text: $host.username)
+                        TextField("Port", value: $host.port, format: .number)
+                            .frame(width: 70)
+                    }
+                }
+
+                Section("Authentifizierung") {
+                    Picker("Methode", selection: $host.authKind) {
+                        ForEach(AuthKind.allCases) { Text($0.label).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+
+                    switch host.authKind {
+                    case .password:
+                        SecureField("Passwort", text: $password)
+                    case .managedKey:
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Füge diesen Public Key einmalig auf dem Server in ~/.ssh/authorized_keys ein:")
+                                .font(.caption).foregroundStyle(.secondary)
+                            HStack {
+                                Text(SSHKeyManager.managedAuthorizedKeysLine())
+                                    .font(.system(.caption, design: .monospaced))
+                                    .lineLimit(2).truncationMode(.middle)
+                                    .textSelection(.enabled)
+                                Button(showCopiedKey ? "Kopiert ✓" : "Kopieren") {
+                                    let pb = NSPasteboard.general
+                                    pb.clearContents()
+                                    pb.setString(SSHKeyManager.managedAuthorizedKeysLine(), forType: .string)
+                                    showCopiedKey = true
+                                }
+                            }
+                        }
+                    case .importedKey:
+                        HStack {
+                            Text(host.importedKeyPath ?? "Keine Datei gewählt")
+                                .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                            Spacer()
+                            Button("Schlüssel wählen…") { chooseKeyFile() }
+                        }
+                        Text("Unterstützt: OpenSSH ed25519 ohne Passphrase (weitere folgen).")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+
+                Section("Schnellstart (optional)") {
+                    HStack {
+                        Text("Tastenkürzel")
+                        Spacer()
+                        Text("⌘").font(.system(.body, design: .rounded)).foregroundStyle(.secondary)
+                        TextField("Taste", text: Binding(
+                            get: { host.shortcut ?? "" },
+                            set: { host.shortcut = Self.normalizeShortcut($0) }
+                        ))
+                        .frame(width: 46)
+                        .multilineTextAlignment(.center)
+                    }
+                    Text("Eine Taste (z. B. 1 oder H). Mit ⌘ startet sie diese Verbindung, solange humibeam aktiv ist.")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+            .formStyle(.grouped)
+
+            Divider()
+            HStack {
+                Spacer()
+                Button("Abbrechen") { dismiss() }
+                Button("Speichern") { save() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(host.host.isEmpty || host.username.isEmpty)
+            }
+            .padding()
+        }
+        .frame(width: 480)
+        .onAppear {
+            if host.authKind == .password {
+                password = SSHKeyManager.loadPassword(hostID: host.id.uuidString) ?? ""
+            }
+        }
+    }
+
+    /// Keeps only a single alphanumeric character (combined with ⌘ for the launch shortcut).
+    private static func normalizeShortcut(_ s: String) -> String? {
+        guard let ch = s.lowercased().last, ch.isLetter || ch.isNumber else { return nil }
+        return String(ch)
+    }
+
+    private func chooseKeyFile() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".ssh")
+        panel.showsHiddenFiles = true
+        if panel.runModal() == .OK, let url = panel.url {
+            host.importedKeyPath = url.path
+        }
+    }
+
+    private func save() {
+        if host.authKind == .password {
+            SSHKeyManager.savePassword(password, hostID: host.id.uuidString)
+        }
+        onSave(host)
+        dismiss()
+    }
+}
