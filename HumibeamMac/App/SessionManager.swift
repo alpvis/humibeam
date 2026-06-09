@@ -74,6 +74,29 @@ final class SessionManager: NSObject, NSWindowDelegate {
         paletteWindow = nil
     }
 
+    // MARK: - First-run hub tips
+
+    @ObservationIgnored private var tipsWindow: NSWindow?
+
+    func openHubTipsIfNeeded() {
+        let key = "humibeam.didSeeHubTips.v2"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        NSApp.setActivationPolicy(.regular)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 460, height: 520),
+                              styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.contentViewController = NSHostingController(
+            rootView: HubTipsView(onClose: { [weak self] in self?.tipsWindow?.close(); self?.tipsWindow = nil }))
+        window.isReleasedWhenClosed = false
+        window.delegate = self
+        window.center()
+        tipsWindow = window
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     init(shell: HumibeamShell) {
         self.shell = shell
         super.init()
@@ -339,6 +362,11 @@ final class SessionManager: NSObject, NSWindowDelegate {
         }
         if window === snippetsWindow {
             snippetsWindow = nil
+            if !anyWindowOpen { NSApp.setActivationPolicy(.accessory) }
+            return
+        }
+        if window === tipsWindow {
+            tipsWindow = nil
             if !anyWindowOpen { NSApp.setActivationPolicy(.accessory) }
             return
         }

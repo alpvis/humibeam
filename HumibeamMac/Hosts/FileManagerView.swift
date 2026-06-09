@@ -140,6 +140,8 @@ struct FileManagerView: View {
                 .help("Hochladen…").disabled(!session.connected)
             Button { downloadSelected() } label: { Image(systemName: "arrow.down.doc") }
                 .help("Herunterladen").disabled(selectedEntry == nil)
+            Button { if let e = selectedEntry { quickLook(e) } } label: { Image(systemName: "eye") }
+                .help("Vorschau (Quick Look)").disabled(selectedEntry?.isDirectory != false)
             Button { if let e = selectedEntry { infoEntry = e } } label: { Image(systemName: "info.circle") }
                 .help("Informationen").disabled(selectedEntry == nil)
                 .keyboardShortcut("i", modifiers: .command)
@@ -272,6 +274,7 @@ struct FileManagerView: View {
             Button("Öffnen") { Task { await session.open(entry) } }
             Button("Als .tar.gz laden…") { downloadFolder(entry) }
         } else {
+            Button("Vorschau (Quick Look)") { quickLook(entry) }
             Button("Herunterladen…") { download(entry) }
             Button("Bearbeiten…") { startEdit(entry) }
         }
@@ -441,6 +444,16 @@ struct FileManagerView: View {
     private func downloadSelected() {
         guard let entry = selectedEntry else { return }
         if entry.isDirectory { downloadFolder(entry) } else { download(entry) }
+    }
+
+    private func quickLook(_ entry: RemoteEntry) {
+        guard !entry.isDirectory else { return }
+        Task {
+            let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let dest = dir.appendingPathComponent(entry.name)
+            if await session.fetch(entry, to: dest) { QuickLook.shared.preview(dest) }
+        }
     }
 
     private func download(_ entry: RemoteEntry) {
