@@ -86,6 +86,9 @@ final class HumibeamShell {
             tab?.awaitingApproval = controller?.awaitingApproval ?? false
             tab?.approvalAllowAlways = controller?.approvalAllowAlways ?? false
         }
+        controller.onPathsChange = { [weak tab, weak controller] in
+            tab?.recentPaths = controller?.recentPaths ?? []
+        }
 
         do {
             let creds = try hostStore.credentials(for: host)
@@ -284,6 +287,18 @@ final class HumibeamShell {
         defer { tab.editBusy = false }
         do { tab.editContent = String(decoding: try await conn.download(path), as: UTF8.self) }
         catch { tab.editContent = "// Konnte Datei nicht laden: \(error.localizedDescription)" }
+    }
+
+    /// Opens an arbitrary remote path (e.g. one Claude mentioned) in the remote editor.
+    func openPathForEdit(_ tab: TerminalTab, path: String) async {
+        guard let conn = tab.controller.connection else { return }
+        tab.editBusy = true
+        tab.editFileName = (path as NSString).lastPathComponent
+        tab.editPath = path
+        tab.editContent = ""; tab.showEditor = true
+        defer { tab.editBusy = false }
+        do { tab.editContent = String(decoding: try await conn.download(path), as: UTF8.self) }
+        catch { tab.editContent = "// Konnte Datei nicht laden: \(error.localizedDescription)\n// (relative Pfade werden ggf. nicht aufgelöst — Claudes Arbeitsverzeichnis ist unbekannt)" }
     }
 
     func saveEdit(_ tab: TerminalTab) async {

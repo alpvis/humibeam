@@ -34,6 +34,12 @@ final class TerminalSessionController: NSObject, TerminalViewDelegate {
     private(set) var approvalAllowAlways = false
     var onApprovalChange: (() -> Void)?
 
+    /// Files Claude Code recently touched (parsed from its tool-call output), newest first.
+    private(set) var recentPaths: [String] = []
+    var onPathsChange: (() -> Void)?
+    private static let pathRegex = try? NSRegularExpression(
+        pattern: #"(?:Update|Read|Write|Edit|MultiEdit|Create|Search)\(([^)\n]{1,200})\)"#)
+
     // Reconnect
     var autoReconnect = true
     private var lastCredentials: SSHCredentials?
@@ -139,6 +145,30 @@ final class TerminalSessionController: NSObject, TerminalViewDelegate {
             }
         }
         detectApprovalPrompt()
+        extractRecentPaths()
+    }
+
+    /// Pulls file paths out of Claude Code's tool-call lines (e.g. "Update(src/foo.py)") so the
+    /// UI can offer them for one-click opening in the remote editor.
+    private func extractRecentPaths() {
+        guard let regex = Self.pathRegex else { return }
+        let text = String(transcript.suffix(4000))
+        let ns = text as NSString
+        var found: [String] = []
+        for m in regex.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+            guard m.numberOfRanges > 1 else { continue }
+            var p = ns.substring(with: m.range(at: 1)).trimmingCharacters(in: .whitespaces)
+            // Drop a trailing " line 12" / ", lines 3-9" hint Claude sometimes appends.
+            if let r = p.range(of: #"\s*,?\s*lines?\s.*$"#, options: .regularExpression) { p.removeSubrange(r) }
+            p = p.trimmingCharacters(in: .whitespaces)
+            if !p.isEmpty, !found.contains(p) { found.append(p) }
+        }
+        // Newest last in transcript → newest first for the menu; cap the list.
+        let newest = Array(found.reversed().prefix(8))
+        if newest != recentPaths {
+            recentPaths = newest
+            onPathsChange?()
+        }
     }
 
     /// Heuristically detects Claude Code's permission prompt in the recent output so the UI can

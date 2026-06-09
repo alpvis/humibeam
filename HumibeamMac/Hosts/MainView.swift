@@ -373,6 +373,17 @@ private struct TerminalToolbar: View {
                     Button("Vorschlagen") { Task { await shell.suggestCommand(tab, intent: tab.aiSuggestIntent) } }
                     Button("Abbrechen", role: .cancel) {}
                 }
+            if !tab.recentPaths.isEmpty {
+                Menu {
+                    Section("Von Claude geöffnet") {
+                        ForEach(tab.recentPaths, id: \.self) { p in
+                            Button(p) { Task { await shell.openPathForEdit(tab, path: p) } }
+                        }
+                    }
+                } label: { Image(systemName: "doc.text.magnifyingglass") }
+                    .menuStyle(.borderlessButton).fixedSize()
+                    .help("Dateien aus Claudes Ausgabe im Editor öffnen").disabled(!tab.connected)
+            }
             HStack(spacing: 4) {
                 Button { shell.terminalFontSize = max(9, shell.terminalFontSize - 1) } label: { Image(systemName: "textformat.size.smaller") }
                 Button { shell.terminalFontSize = min(28, shell.terminalFontSize + 1) } label: { Image(systemName: "textformat.size.larger") }
