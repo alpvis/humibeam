@@ -208,6 +208,12 @@ final class FileSession: Identifiable {
         }
     }
 
+    /// Downloads an entry to a local URL and reports success — used by drag-to-Finder file promises.
+    func fetch(_ entry: RemoteEntry, to url: URL) async -> Bool {
+        await download(entry, to: url)
+        return FileManager.default.fileExists(atPath: url.path)
+    }
+
     func downloadFolder(_ entry: RemoteEntry, to localURL: URL) async {
         guard let conn = connection else { return }
         let transfer = Transfer(name: "\(entry.name).tar.gz", isUpload: false, total: 0)

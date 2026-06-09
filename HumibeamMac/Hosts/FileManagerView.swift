@@ -189,6 +189,7 @@ struct FileManagerView: View {
                         .tag(entry.id)
                         .contextMenu { rowMenu(entry) }
                         .onTapGesture(count: 2) { handleOpen(entry) }
+                        .onDrag { dragProvider(entry) }
                 }
             } header: {
                 HStack(spacing: 0) {
@@ -472,6 +473,26 @@ struct FileManagerView: View {
             let urls = panel.urls
             Task { await session.upload(urls: urls) }
         }
+    }
+
+    /// A drag item that downloads the remote file lazily when dropped into Finder (file promise).
+    private func dragProvider(_ entry: RemoteEntry) -> NSItemProvider {
+        let provider = NSItemProvider()
+        guard !entry.isDirectory else { return provider }
+        provider.suggestedName = entry.name
+        provider.registerFileRepresentation(forTypeIdentifier: UTType.data.identifier,
+                                            fileOptions: [], visibility: .all) { completion in
+            Task {
+                let dir = FileManager.default.temporaryDirectory
+                    .appendingPathComponent(UUID().uuidString, isDirectory: true)
+                try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                let dest = dir.appendingPathComponent(entry.name)
+                let ok = await session.fetch(entry, to: dest)
+                completion(ok ? dest : nil, false, ok ? nil : NSError(domain: "humibeam", code: 1))
+            }
+            return nil
+        }
+        return provider
     }
 
     private func handleDrop(_ providers: [NSItemProvider]) {

@@ -1,0 +1,7 @@
+{
+  "version": "2.0",
+  "build": 20,
+  "dmgURL": "https://github.com/alpvis/humibeam/releases/download/v2.0/Humibeam.dmg",
+  "notes": "Sitzungs-Hub (ein Fenster pro Sitzung), SFTP-Datei-Manager mit Fortschritt, Claude-Superkräfte (An Claude senden, Tool-Calls per Knopf, Dateien öffnen, Diktat) und echtes Host-Key-Pinning.",
+  "minOS": "13.0"
+}

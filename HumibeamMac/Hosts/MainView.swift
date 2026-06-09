@@ -362,6 +362,11 @@ private struct TerminalToolbar: View {
                     .background(Color.purple.opacity(0.12), in: Capsule())
             }
             Spacer()
+            Button { NotificationCenter.default.post(name: .toggleTerminalDictation, object: nil) } label: {
+                Image(systemName: "mic.fill")
+            }
+            .help("Diktat ins Terminal (an Claude sprechen) — nochmal klicken zum Stoppen")
+            .disabled(!tab.connected)
             Menu {
                 Button("Letzte Ausgabe erklären") { Task { await shell.explainOutput(tab) } }
                 Button("Fehler beheben") { Task { await shell.fixError(tab) } }

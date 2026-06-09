@@ -85,6 +85,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             name: .dismissPopover,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleTerminalDictation),
+            name: .toggleTerminalDictation,
+            object: nil
+        )
 
         DispatchQueue.main.async { [weak self] in
             self?.showOnboardingIfNeeded()
@@ -210,6 +216,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc private func handleDismissPopover() {
         appState.isPopoverShown = false
         popover.performClose(nil)
+    }
+
+    /// Mic button in a terminal: toggle background dictation. The result is routed straight into
+    /// the focused terminal session via `directTextSink` (no popover, so the terminal keeps focus).
+    @objc private func handleTerminalDictation() {
+        if let active = appState.activeWorkflow, active.phase.isActive {
+            active.stop()
+            return
+        }
+        guard appState.isConfigured else { return }
+        let type: WorkflowType = appState.appSettings.secureLocalModeEnabled ? .localTranscription : .transcription
+        appState.startWorkflow(type, source: .hotkeyBackground)
     }
 
     private func handleHotkeyEvent(_ event: HotkeyEvent) {

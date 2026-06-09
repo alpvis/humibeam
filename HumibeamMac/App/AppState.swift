@@ -655,6 +655,8 @@ private struct SettingsContainer: Codable {
 
 extension Notification.Name {
     static let dismissPopover = Notification.Name("dismissPopover")
+    /// Toggle voice dictation routed into the focused terminal session (mic button in a session).
+    static let toggleTerminalDictation = Notification.Name("toggleTerminalDictation")
 }
 
 private struct PasteTarget {
