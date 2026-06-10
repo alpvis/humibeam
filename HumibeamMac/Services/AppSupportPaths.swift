@@ -34,6 +34,7 @@ enum AppSupportPaths {
             .appendingPathComponent(bundleIdentifier, isDirectory: true)
     }
 
+    #if os(macOS)
     static var preferencesURL: URL {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library", isDirectory: true)
@@ -47,6 +48,7 @@ enum AppSupportPaths {
             .appendingPathComponent("Saved Application State", isDirectory: true)
             .appendingPathComponent("\(bundleIdentifier).savedState", isDirectory: true)
     }
+    #endif
 
     static func ensureAppSupportDirectoryExists() throws {
         try FileManager.default.createDirectory(

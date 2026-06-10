@@ -180,9 +180,26 @@ appcast.json            Auto-Update-Feed (humibeam.com first, GitHub raw als Fal
 
 ---
 
+## humibeam für iOS (neu)
+
+Die iPhone/iPad-App liegt in [`HumibeamiOS/`](HumibeamiOS/) und teilt sich den kompletten
+SSH-Kern und das Agent-Cockpit (Approval-Parser, Git-Diff, Claude-Bridge) mit der Mac-App:
+
+- **SSH-Terminal unterwegs** (SwiftTerm) mit Tasten-Leiste über der Tastatur
+  (Esc · Tab · ⇧Tab · Ctrl · ^C · Pfeile · Sonderzeichen) — gemacht für die Claude-Code-TUI.
+- **Approval-Karten** wie am Mac: Erlauben / Immer / Ablehnen, gefährliche Befehle rot.
+- **Echter Diff vom Server** (±-Knopf) über den Exec-Channel.
+- **Bild-Upload in die Session**: Zwischenablage oder Fotobibliothek → Upload über die
+  bestehende Verbindung → Pfad wird eingetippt, Claude liest das Bild.
+- Profile mit humibeam-Schlüssel / Passwort / eigenem Key, ProxyJump, known_hosts-Pinning,
+  Auto-Reconnect — alles derselbe Code wie am Mac.
+
+Bauen: `cd HumibeamiOS && xcodegen generate && xcodebuild -scheme HumibeamiOS \
+-destination 'platform=iOS Simulator,name=iPhone 17' build`
+
 ## Roadmap
 
-- **iPhone-Companion** — Push „Claude wartet auf dich", Erlauben/Ablehnen vom Handy.
+- **iOS: Push „Claude wartet auf dich"** — Benachrichtigung + Erlauben/Ablehnen vom Sperrbildschirm.
 - **Fleet-View** — mehrere Agenten auf mehreren Servern in einem Dashboard.
 - **Konversationelles Voice** — sprechen → Claude antwortet → TTS liest die Zusammenfassung vor.
 - **Echtes SFTP via [Citadel](https://github.com/orlandos-nl/Citadel)** — byte-genauer Fortschritt, sehr große Dateien.

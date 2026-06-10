@@ -101,6 +101,7 @@ final class HostStore {
 
     // MARK: - SSH config import
 
+    #if os(macOS)
     /// Imports hosts from `~/.ssh/config` (skips wildcard patterns; de-dupes by host:user:port).
     func importSSHConfig() {
         for host in Self.parseSSHConfig() {
@@ -157,4 +158,5 @@ final class HostStore {
         flush()
         return result
     }
+    #endif
 }

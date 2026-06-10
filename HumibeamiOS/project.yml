@@ -1,0 +1,69 @@
+name: HumibeamiOS
+options:
+  bundleIdPrefix: app.humibeam
+  deploymentTarget:
+    iOS: "17.0"
+  xcodeVersion: "16.0"
+
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+
+packages:
+  SwiftTerm:
+    url: https://github.com/migueldeicaza/SwiftTerm.git
+    from: 1.13.0
+  swift-nio-ssh:
+    url: https://github.com/apple/swift-nio-ssh.git
+    from: 0.13.0
+  swift-nio:
+    url: https://github.com/apple/swift-nio.git
+    from: 2.60.0
+  swift-crypto:
+    url: https://github.com/apple/swift-crypto.git
+    from: 3.0.0
+
+targets:
+  HumibeamiOS:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+      # Geteilter, plattformneutraler Kern aus der Mac-App:
+      - path: ../HumibeamMac/SSH
+      - path: ../HumibeamMac/Terminal/ClaudeApproval.swift
+      - path: ../HumibeamMac/Terminal/GitDiffService.swift
+      - path: ../HumibeamMac/Terminal/ClaudeBridge.swift
+      - path: ../HumibeamMac/Hosts/HostStore.swift
+      - path: ../HumibeamMac/Services/KeychainService.swift
+      - path: ../HumibeamMac/Services/AppSupportPaths.swift
+      - path: ../HumibeamMac/Services/NetworkMonitor.swift
+      - path: Resources
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.humibeam.ios
+        PRODUCT_NAME: Humibeam
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Humibeam
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "Humibeam verbindet sich per SSH mit Servern, auch in deinem lokalen Netzwerk."
+        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Bilder aus der Fotobibliothek können in die Remote-Session hochgeladen werden."
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        TARGETED_DEVICE_FAMILY: "1,2"
+    dependencies:
+      - package: SwiftTerm
+        product: SwiftTerm
+      - package: swift-nio-ssh
+        product: NIOSSH
+      - package: swift-nio
+        product: NIOCore
+      - package: swift-nio
+        product: NIOPosix
+      - package: swift-crypto
+        product: Crypto

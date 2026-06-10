@@ -9,6 +9,8 @@ HumibeamMac/.ddrel/
 
 # Xcode project is generated from project.yml by XcodeGen
 HumibeamMac/HumibeamMac.xcodeproj/
+HumibeamiOS/HumibeamiOS.xcodeproj/
+HumibeamiOS/.dd/
 
 # Xcode user state
 xcuserdata/
