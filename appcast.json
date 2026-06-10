@@ -1,7 +1,7 @@
 {
-  "version": "3.0",
-  "build": 30,
-  "dmgURL": "https://github.com/alpvis/humibeam/releases/download/v3.0/Humibeam.dmg",
-  "notes": "humibeam 3.0 — neues Studio-Design: ein Hauptfenster mit Sidebar (Profile + Sitzungen) und Umschalter Terminal / Dateien / Split. Integrierter Datei-Manager über dieselbe SSH-Verbindung, stabiler Hintergrund-Reconnect bei Netzverlust, aufgeräumte Toolbar (Diktat als Nebenfunktion), neues Humiqa-Icon.",
+  "version": "3.1",
+  "build": 31,
+  "dmgURL": "https://github.com/alpvis/humibeam/releases/download/v3.1/Humibeam.dmg",
+  "notes": "Agent-Cockpit: Inline-Approvals für Claude Code (Befehl/Diff/Risiko-Warnung), echter git-Diff vom Server, opt-in Claude-Bridge für exakte Tool-Calls · Doppelklick-Fix im Datei-Browser",
   "minOS": "13.0"
 }
