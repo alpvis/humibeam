@@ -9,12 +9,13 @@ import SwiftTerm
 struct MainWindowView: View {
     @Bindable var shell: HumibeamShell
     @Bindable var sessions: SessionManager
+    @Bindable var updater: UpdateService
     @State private var editingHost: SSHHost?
     @State private var showingEditor = false
 
     var body: some View {
         NavigationSplitView {
-            SidebarView(shell: shell, sessions: sessions,
+            SidebarView(shell: shell, sessions: sessions, updater: updater,
                         editHost: { editingHost = $0; showingEditor = true },
                         newHost: { editingHost = nil; showingEditor = true })
             .navigationSplitViewColumnWidth(min: 232, ideal: 256, max: 340)
@@ -39,6 +40,7 @@ struct MainWindowView: View {
 struct SidebarView: View {
     @Bindable var shell: HumibeamShell
     @Bindable var sessions: SessionManager
+    @Bindable var updater: UpdateService
     var editHost: (SSHHost) -> Void
     var newHost: () -> Void
 
@@ -78,7 +80,49 @@ struct SidebarView: View {
             }
         }
         .listStyle(.sidebar)
-        .safeAreaInset(edge: .bottom) { bottomBar }
+        .safeAreaInset(edge: .bottom) {
+            VStack(spacing: 0) {
+                Divider()
+                updateRow
+                Divider()
+                bottomBar
+            }
+        }
+    }
+
+    /// Always-visible installed version + "search for updates" / install affordance.
+    @ViewBuilder private var updateRow: some View {
+        if let info = updater.available {
+            Button { updater.installAvailableUpdate() } label: {
+                HStack(spacing: 6) {
+                    if updater.isInstalling { ProgressView().controlSize(.small).scaleEffect(0.7) }
+                    else { Image(systemName: "arrow.down.circle.fill") }
+                    Text(updater.isInstalling ? (updater.statusText ?? "Installiere…")
+                                              : "Update auf \(info.version) installieren")
+                        .font(.caption).fontWeight(.medium)
+                    Spacer()
+                }
+                .foregroundStyle(Color.accentColor)
+            }
+            .buttonStyle(.borderless).disabled(updater.isInstalling)
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            .background(Color.accentColor.opacity(0.12))
+            .help(info.notes)
+        } else {
+            HStack(spacing: 6) {
+                Text(updater.statusText ?? "humibeam v\(updater.currentVersion) (Build \(updater.currentBuild))")
+                    .font(.caption2).foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail)
+                Spacer()
+                if updater.isChecking {
+                    ProgressView().controlSize(.small).scaleEffect(0.6)
+                } else {
+                    Button("Nach Updates suchen") { Task { await updater.check(silent: false) } }
+                        .buttonStyle(.borderless).font(.caption2).foregroundStyle(.secondary)
+                        .help("Prüft auf eine neuere Version")
+                }
+            }
+            .padding(.horizontal, 12).padding(.vertical, 4)
+        }
     }
 
     private var bottomBar: some View {

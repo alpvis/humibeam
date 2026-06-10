@@ -11,6 +11,7 @@ import SwiftTerm
 @MainActor
 final class SessionManager: NSObject, NSWindowDelegate {
     let shell: HumibeamShell
+    let updater: UpdateService
     var localSessions: [LocalSession] = []
     var fileSessions: [FileSession] = []
 
@@ -28,8 +29,9 @@ final class SessionManager: NSObject, NSWindowDelegate {
     }
     private var anyWindowOpen: Bool { mainWindow != nil || anyUtilityWindowOpen }
 
-    init(shell: HumibeamShell) {
+    init(shell: HumibeamShell, updater: UpdateService) {
         self.shell = shell
+        self.updater = updater
         super.init()
     }
 
@@ -51,7 +53,7 @@ final class SessionManager: NSObject, NSWindowDelegate {
         window.titlebarAppearsTransparent = false
         window.contentMinSize = NSSize(width: 760, height: 440)
         window.contentViewController = NSHostingController(
-            rootView: MainWindowView(shell: shell, sessions: self))
+            rootView: MainWindowView(shell: shell, sessions: self, updater: updater))
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.center()

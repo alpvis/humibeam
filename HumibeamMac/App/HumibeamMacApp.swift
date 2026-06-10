@@ -23,7 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let menuBarStatusController = MenuBarStatusController()
     let appState = AppState()
     let shell = HumibeamShell()
-    private lazy var sessions = SessionManager(shell: shell)
+    private lazy var sessions = SessionManager(shell: shell, updater: appState.updater)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -127,6 +127,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         appState.page = .settings
     }
 
+    /// "Nach Updates suchen…" — open the main window (so the result is visible in its sidebar) and check.
+    @objc private func checkForUpdatesAction() {
+        sessions.showMainWindow()
+        Task { await appState.updater.check(silent: false) }
+    }
+
     // MARK: - Main menu
 
     private func setupMainMenu() {
@@ -138,6 +144,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let appMenu = NSMenu()
         appItem.submenu = appMenu
         appMenu.addItem(withTitle: "Über humibeam", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: "Nach Updates suchen…", action: #selector(checkForUpdatesAction), keyEquivalent: "").target = self
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Einstellungen / Sprache…", action: #selector(showVoiceAction), keyEquivalent: ",").target = self
         appMenu.addItem(.separator())
