@@ -1,7 +1,7 @@
 {
-  "version": "3.2",
-  "build": 32,
-  "dmgURL": "https://github.com/alpvis/humibeam/releases/download/v3.2/Humibeam.dmg",
-  "notes": "Update-Anzeige: installierte Version sichtbar + Nach-Updates-suchen-Knopf in der Seitenleiste",
+  "version": "3.3",
+  "build": 33,
+  "dmgURL": "https://github.com/alpvis/humibeam/releases/download/v3.3/Humibeam.dmg",
+  "notes": "Versions-/Update-Zeile in der Seitenleiste fügt sich farblich sauber ein",
   "minOS": "13.0"
 }
