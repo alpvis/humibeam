@@ -23,7 +23,19 @@ chown -R www-data:www-data "$WEBROOT" 2>/dev/null || true
 echo "   index.html: $(wc -c <"$WEBROOT/index.html") Bytes · Humibeam.dmg: $(du -h "$WEBROOT/Humibeam.dmg" | cut -f1)"
 
 echo "▶︎ nginx-vhost schreiben (HTTP; certbot ergänzt HTTPS)"
-cat >/etc/nginx/conf.d/humibeam.conf <<NGINX
+# Server-Layout erkennen: Debian/Ubuntu (sites-available/-enabled) oder conf.d
+if [ -d /etc/nginx/sites-available ]; then
+    VHOST=/etc/nginx/sites-available/humibeam.com
+    LINK=/etc/nginx/sites-enabled/humibeam.com
+elif [ -d /etc/nginx/conf.d ]; then
+    VHOST=/etc/nginx/conf.d/humibeam.conf
+    LINK=""
+else
+    mkdir -p /etc/nginx/conf.d
+    VHOST=/etc/nginx/conf.d/humibeam.conf
+    LINK=""
+fi
+cat >"$VHOST" <<NGINX
 server {
     listen 80;
     listen [::]:80;
@@ -34,6 +46,8 @@ server {
     location / { try_files \$uri \$uri/ =404; }
 }
 NGINX
+[ -n "$LINK" ] && ln -sf "$VHOST" "$LINK"
+echo "   vhost: $VHOST"
 
 nginx -t && systemctl reload nginx
 echo "   nginx neu geladen."
