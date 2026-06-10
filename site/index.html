@@ -1,93 +1,297 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>humibeam — der SSH-Client für Claude Code</title>
-<meta name="description" content="Screenshots, Sprache und Dateien in eine Remote-Claude-Code-Session — über eine SSH-Verbindung. Terminal auf iTerm2-Niveau, Dateitransfer wie Cyberduck, mit KI-Hilfe.">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>humibeam — Das macOS-Cockpit für KI-Agenten auf entfernten Servern</title>
+<meta name="description" data-de="humibeam ist ein macOS-SSH-Terminal, gebaut für agentische CLIs wie Claude Code: Screenshots & Sprache rein, Dateien rein/raus und ein Agent-Cockpit, das mitliest, was der Agent vorhat. Kostenlos für macOS."
+      content="humibeam ist ein macOS-SSH-Terminal, gebaut für agentische CLIs wie Claude Code. Kostenlos für macOS.">
+<meta property="og:title" content="humibeam — Das macOS-Cockpit für KI-Agenten">
+<meta property="og:description" content="SSH-Terminal für Claude Code & Co.: Screenshot-Paste über SSH, globales Sprach-Diktat, Inline-Approvals mit echtem Diff. Kostenlos für macOS.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://humibeam.com">
+<link rel="canonical" href="https://humibeam.com/">
 <style>
   :root{
-    --cyan:#00d2ff; --indigo:#5b2be0; --ink:#0d1117; --paper:#0f1020; --fg:#e9eeff; --muted:#a9b2d0;
+    --panel:#12151c; --line:#232936; --fg:#e8ecf3; --muted:#9aa6b8; --dim:#6b7688;
+    --accent:#5b8cff; --accent2:#7c5cff; --green:#34d399; --orange:#fbbf24;
+    --radius:16px; --maxw:1080px;
   }
   *{box-sizing:border-box;margin:0;padding:0}
-  body{font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:var(--fg);
-    background:radial-gradient(1200px 600px at 70% -10%,rgba(0,210,255,.25),transparent),
-               radial-gradient(900px 500px at 10% 10%,rgba(91,43,224,.30),transparent),var(--paper);
-    min-height:100vh}
-  .wrap{max-width:1020px;margin:0 auto;padding:0 24px}
-  header{padding:80px 0 40px;text-align:center}
-  .logo{width:108px;height:108px;border-radius:26px;margin:0 auto 26px;display:grid;place-items:center;
-    background:linear-gradient(150deg,var(--cyan),var(--indigo));box-shadow:0 20px 60px rgba(91,43,224,.5);
-    font:700 56px/1 ui-monospace,Menlo,monospace;color:#fff}
-  h1{font-size:clamp(34px,6vw,60px);letter-spacing:-.02em;line-height:1.05}
-  .grad{background:linear-gradient(90deg,var(--cyan),#b388ff);-webkit-background-clip:text;background-clip:text;color:transparent}
-  .lede{font-size:clamp(17px,2.4vw,22px);color:var(--muted);max-width:680px;margin:22px auto 0}
-  .cta{display:inline-flex;gap:10px;align-items:center;margin-top:34px;padding:14px 26px;border-radius:14px;
-    background:linear-gradient(150deg,var(--cyan),var(--indigo));color:#fff;font-weight:600;text-decoration:none;
-    box-shadow:0 12px 40px rgba(0,210,255,.35)}
-  .sub{margin-top:14px;color:var(--muted);font-size:14px}
-  .killer{margin:60px 0;padding:30px;border:1px solid rgba(255,255,255,.10);border-radius:18px;
-    background:rgba(255,255,255,.03)}
-  .killer h2{font-size:24px;margin-bottom:8px}
-  .killer p{color:var(--muted)}
-  code{font-family:ui-monospace,Menlo,monospace;background:rgba(255,255,255,.08);padding:2px 7px;border-radius:6px}
-  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px;margin:24px 0 60px}
-  .card{padding:22px;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:rgba(255,255,255,.03)}
-  .card .ic{font-size:24px;margin-bottom:10px}
-  .card h3{font-size:17px;margin-bottom:6px}
-  .card p{color:var(--muted);font-size:14.5px}
-  .pillars{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin:10px 0 40px}
-  @media(max-width:760px){.pillars{grid-template-columns:1fr}}
-  .pill{padding:18px;border-radius:14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08)}
-  .pill b{color:var(--cyan)}
-  footer{padding:50px 0 70px;text-align:center;color:var(--muted);font-size:13px;border-top:1px solid rgba(255,255,255,.08);margin-top:40px}
-  .tag{display:inline-block;font-size:12px;color:var(--cyan);letter-spacing:.14em;text-transform:uppercase;margin-bottom:14px}
+  html{scroll-behavior:smooth}
+  body{background:radial-gradient(1200px 700px at 70% -10%,rgba(91,140,255,.12),transparent 60%),
+        radial-gradient(900px 600px at 10% 10%,rgba(124,92,255,.10),transparent 55%),#0a0c10;
+        color:var(--fg);font:16px/1.6 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Inter,system-ui,sans-serif;
+        -webkit-font-smoothing:antialiased}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px}
+  a{color:var(--accent);text-decoration:none}
+  header{position:sticky;top:0;z-index:20;backdrop-filter:blur(14px);
+         background:rgba(10,12,16,.72);border-bottom:1px solid var(--line)}
+  .nav{display:flex;align-items:center;gap:16px;height:62px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:18px;letter-spacing:-.01em}
+  .brand .dot{width:11px;height:11px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));box-shadow:0 0 14px rgba(91,140,255,.7)}
+  .nav .spacer{flex:1}
+  .nav a.navlink{color:var(--muted);font-size:14.5px}
+  .nav a.navlink:hover{color:var(--fg)}
+  .lang-toggle{display:flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}
+  .lang-toggle button{background:transparent;color:var(--muted);border:0;padding:6px 12px;font-size:13px;font-weight:600;cursor:pointer}
+  .lang-toggle button.active{background:var(--accent);color:#fff}
+  .btn{display:inline-flex;align-items:center;gap:9px;background:linear-gradient(135deg,var(--accent),var(--accent2));
+       color:#fff;font-weight:650;padding:12px 20px;border-radius:12px;border:0;cursor:pointer;font-size:15px;
+       box-shadow:0 8px 30px rgba(91,140,255,.35);transition:transform .15s ease,box-shadow .15s ease}
+  .btn:hover{transform:translateY(-1px);box-shadow:0 12px 40px rgba(91,140,255,.5)}
+  .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--fg);box-shadow:none}
+  .hero{padding:84px 0 56px;text-align:center}
+  .pill{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--panel);
+        color:var(--muted);border-radius:999px;padding:6px 14px;font-size:13px;margin-bottom:26px}
+  .pill .b{color:var(--green);font-weight:700}
+  h1{font-size:clamp(34px,6vw,60px);line-height:1.04;letter-spacing:-.03em;font-weight:800;
+     background:linear-gradient(180deg,#fff,#b9c4d6);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .sub{color:var(--muted);font-size:clamp(16px,2.3vw,20px);max-width:680px;margin:22px auto 34px}
+  .cta{display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
+  .meta{color:var(--dim);font-size:13px;margin-top:16px}
+  .mock{max-width:860px;margin:54px auto 0;border:1px solid var(--line);border-radius:14px;overflow:hidden;
+        background:#0d1017;box-shadow:0 30px 80px rgba(0,0,0,.5)}
+  .mock .bar{display:flex;align-items:center;gap:7px;padding:11px 14px;background:#12151c;border-bottom:1px solid var(--line)}
+  .mock .bar i{width:11px;height:11px;border-radius:50%;display:inline-block}
+  .mock .bar .r{background:#ff5f57}.mock .bar .y{background:#febc2e}.mock .bar .g{background:#28c840}
+  .mock .bar span{margin-left:10px;color:var(--dim);font-size:12.5px}
+  .term{font:13px/1.7 "SF Mono",ui-monospace,Menlo,monospace;padding:18px;color:#cdd6e4;white-space:pre-wrap}
+  .term .p{color:var(--green)}.term .c{color:#7fd1ff}.term .muted{color:var(--dim)}
+  .card-approve{margin:14px 18px 20px;border-left:3px solid var(--orange);background:rgba(251,191,36,.08);
+        border-radius:8px;padding:12px 14px;font:13.5px/1.5 -apple-system,system-ui,sans-serif}
+  .card-approve .h{display:flex;align-items:center;gap:8px;font-weight:700;margin-bottom:8px}
+  .card-approve code{display:block;background:#0d1017;border-radius:6px;padding:8px 10px;color:#ffd9d9;font-family:"SF Mono",monospace;font-size:12.5px;margin-bottom:10px;white-space:pre}
+  .card-approve .row{display:flex;gap:8px;justify-content:flex-end}
+  .card-approve .bb{padding:6px 14px;border-radius:7px;font-size:12.5px;font-weight:650;border:1px solid var(--line);color:var(--fg);background:transparent}
+  .card-approve .bb.primary{background:var(--orange);color:#1a1206;border:0}
+  .tag{font-size:10.5px;font-weight:800;letter-spacing:.04em;color:#1a1206;background:var(--orange);border-radius:5px;padding:2px 6px}
+  section{padding:64px 0;border-top:1px solid var(--line)}
+  .eyebrow{color:var(--accent);font-weight:700;font-size:13px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:12px;text-align:center}
+  h2{font-size:clamp(26px,4vw,38px);letter-spacing:-.02em;text-align:center;font-weight:800;margin-bottom:14px}
+  .lead{color:var(--muted);text-align:center;max-width:620px;margin:0 auto 44px}
+  .grid{display:grid;gap:18px}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  @media(max-width:820px){.g3{grid-template-columns:1fr}.nav a.navlink{display:none}}
+  .feat{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:24px}
+  .feat .ic{width:42px;height:42px;border-radius:11px;display:flex;align-items:center;justify-content:center;
+            font-size:21px;background:linear-gradient(135deg,rgba(91,140,255,.2),rgba(124,92,255,.2));border:1px solid var(--line);margin-bottom:14px}
+  .feat h3{font-size:18px;margin-bottom:8px;letter-spacing:-.01em}
+  .feat p{color:var(--muted);font-size:14.5px}
+  .steps{display:grid;gap:16px;max-width:760px;margin:0 auto}
+  .step{display:flex;gap:16px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px 22px}
+  .step .n{flex:none;width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--accent),var(--accent2));
+           display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;color:#fff}
+  .step h4{font-size:16.5px;margin-bottom:4px}.step p{color:var(--muted);font-size:14px}
+  .featlist{columns:2;column-gap:40px;max-width:880px;margin:0 auto;list-style:none}
+  @media(max-width:680px){.featlist{columns:1}}
+  .featlist li{break-inside:avoid;padding:7px 0 7px 26px;position:relative;color:var(--muted);font-size:14.5px}
+  .featlist li::before{content:"✓";position:absolute;left:0;color:var(--green);font-weight:800}
+  .featlist li b{color:var(--fg);font-weight:650}
+  .download{text-align:center}
+  .dlbox{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:40px;max-width:560px;margin:0 auto}
+  .dlbox .price{font-size:15px;color:var(--green);font-weight:700;margin-bottom:16px}
+  .dlbox .req{color:var(--dim);font-size:13px;margin-top:18px}
+  footer{border-top:1px solid var(--line);padding:48px 0;color:var(--dim);font-size:13.5px}
+  .foot-grid{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
+  footer b{color:var(--muted)}footer a{color:var(--muted)}
+  .imprint{margin-top:8px;line-height:1.7}
 </style>
 </head>
-<body>
-<div class="wrap">
-  <header>
-    <div class="logo">&gt;_</div>
-    <div class="tag">macOS · SSH · Claude Code</div>
-    <h1>Screenshots in <span class="grad">Claude&nbsp;Code</span><br>über SSH einfügen.</h1>
-    <p class="lede">humibeam ist der SSH-Client, der für agentische CLIs gebaut ist: Bilder, Sprache und Dateien
-      landen in einer Remote-<code>claude</code>-Session — über <b>eine</b> Verbindung, ohne Server-Installation.</p>
-    <a class="cta" href="#download">humibeam laden →</a>
-    <div class="sub">macOS 14+ · Apple Silicon &amp; Intel · eigener OpenAI-Key für die KI-Funktionen</div>
-  </header>
+<body class="lang-de">
+<header>
+  <div class="wrap nav">
+    <div class="brand"><span class="dot"></span> humibeam</div>
+    <a class="navlink" href="#cockpit" data-de="Agent-Cockpit" data-en="Agent Cockpit">Agent-Cockpit</a>
+    <a class="navlink" href="#powers" data-de="Superkräfte" data-en="Superpowers">Superkräfte</a>
+    <a class="navlink" href="#features" data-de="Funktionen" data-en="Features">Funktionen</a>
+    <a class="navlink" href="#download" data-de="Download" data-en="Download">Download</a>
+    <div class="spacer"></div>
+    <div class="lang-toggle">
+      <button id="b-de" class="active" onclick="setLang('de')">DE</button>
+      <button id="b-en" onclick="setLang('en')">EN</button>
+    </div>
+    <a class="btn" href="#download" data-de="Kostenlos laden" data-en="Free download">Kostenlos laden</a>
+  </div>
+</header>
 
-  <section class="killer">
-    <h2>✨ Das, was kein SSH-Client kann</h2>
-    <p>Drück <code>Cmd&nbsp;+&nbsp;V</code> mit einem Screenshot im Terminal — humibeam lädt ihn über die bestehende
-      SSH-Verbindung hoch und tippt den Pfad in die laufende <code>claude</code>-Session. Claude Code liest das Bild.
-      Funktioniert auf jedem nackten Ubuntu-Server, ohne dort etwas zu installieren.</p>
+<main class="wrap">
+  <section class="hero" style="border-top:0">
+    <div class="pill"><span class="b">●</span>
+      <span data-de="Kostenlos für macOS · notarisiert" data-en="Free for macOS · notarized">Kostenlos für macOS · notarisiert</span>
+    </div>
+    <h1 data-de="Das Cockpit für KI-Agenten auf entfernten Servern."
+        data-en="The cockpit for AI agents on remote servers.">Das Cockpit für KI-Agenten auf entfernten Servern.</h1>
+    <p class="sub" data-de="humibeam ist ein macOS-SSH-Terminal, gebaut für agentische CLIs wie Claude Code. Es liest mit, was dein Agent vorhat, und zeigt es als native Oberfläche — Screenshots & Sprache rein, Dateien rein/raus, alles über eine Verbindung. Ganz ohne Installation auf dem Server."
+       data-en="humibeam is a macOS SSH terminal built for agentic CLIs like Claude Code. It reads along with what your agent is about to do and shows it as native UI — screenshots & voice in, files in/out, all over one connection. With zero install on the server.">humibeam ist ein macOS-SSH-Terminal, gebaut für agentische CLIs wie Claude Code.</p>
+    <div class="cta">
+      <a class="btn" href="#download" data-de="↓ Für macOS laden" data-en="↓ Download for macOS">↓ Für macOS laden</a>
+      <a class="btn ghost" href="#cockpit" data-de="Wie es funktioniert" data-en="How it works">Wie es funktioniert</a>
+    </div>
+    <div class="meta" data-de="macOS 13+ · Apple Silicon & Intel · von der Humiqa GmbH, Wien"
+         data-en="macOS 13+ · Apple Silicon & Intel · by Humiqa GmbH, Vienna">macOS 13+ · Apple Silicon & Intel · von der Humiqa GmbH, Wien</div>
+
+    <div class="mock">
+      <div class="bar"><i class="r"></i><i class="y"></i><i class="g"></i><span>humibeam — ali@server: ~/app</span></div>
+      <div class="term"><span class="p">ali@server</span>:<span class="c">~/app</span>$ claude
+<span class="muted">✻ Claude Code — bereit · Screenshot eingefügt: ~/.humibeam/pastes/ui.png</span>
+&gt; Behebe den Login-Bug und committe.</div>
+      <div class="card-approve">
+        <div class="h">✏️ <span data-de="Datei bearbeiten" data-en="Edit file">Datei bearbeiten</span>
+          <span style="flex:1"></span><span style="color:var(--green);font-size:11px">✓ <span data-de="exakt" data-en="exact">exakt</span></span></div>
+        <code>- if user.token == None:
++ if user.token is None:</code>
+        <div class="row">
+          <button class="bb" data-de="Echter Diff" data-en="Real diff">Echter Diff</button>
+          <button class="bb" data-de="Ablehnen" data-en="Deny">Ablehnen</button>
+          <button class="bb primary" data-de="Erlauben" data-en="Allow">Erlauben</button>
+        </div>
+      </div>
+    </div>
   </section>
 
-  <div class="pillars">
-    <div class="pill"><b>Terminal</b><br>Tabs, Split-Panes, Suche, Themes, Reconnect, Broadcast — auf iTerm2-Niveau.</div>
-    <div class="pill"><b>Dateien</b><br>SCP/SFTP-Browser: Up/Download, mkdir, chmod, Umbenennen, Ordner als .tar.gz, Remote-Editor.</div>
-    <div class="pill"><b>KI &amp; Sprache</b><br>Diktat ins Terminal, Ausgabe erklären, Fehler beheben, Befehle vorschlagen.</div>
-  </div>
-
-  <div class="grid">
-    <div class="card"><div class="ic">📸</div><h3>Screenshot-Paste</h3><p>Bild kopieren → Cmd+V → Upload → Pfad in der Claude-Session.</p></div>
-    <div class="card"><div class="ic">🎙️</div><h3>Voice-Diktat</h3><p>Hotkey halten, sprechen — der Text wird direkt ins Terminal getippt.</p></div>
-    <div class="card"><div class="ic">🗂️</div><h3>Datei-Browser</h3><p>Drag &amp; Drop rein/raus, Remote-Dateien direkt bearbeiten, Lesezeichen.</p></div>
-    <div class="card"><div class="ic">🔀</div><h3>Port-Forwarding</h3><p><code>ssh -L</code> mit einem Klick — lokale Ports sicher durch den Tunnel.</p></div>
-    <div class="card"><div class="ic">🧠</div><h3>KI-Hilfe</h3><p>Terminal-Ausgabe erklären, Fehler deuten, passende Befehle vorschlagen.</p></div>
-    <div class="card"><div class="ic">🔑</div><h3>Sicher</h3><p>Schlüssel im macOS-Keychain, eigener humibeam-Key oder bestehende SSH-Keys.</p></div>
-  </div>
-
-  <section id="download" class="killer" style="text-align:center">
-    <h2>humibeam testen</h2>
-    <p style="margin:10px auto 22px;max-width:560px">Open-Source-Vorschau. Selbst bauen oder die signierte App laden.</p>
-    <a class="cta" href="https://github.com/alpvis/humibeam">Auf GitHub ansehen →</a>
+  <section id="cockpit">
+    <div class="eyebrow" data-de="Das Herzstück" data-en="The heart of it">Das Herzstück</div>
+    <h2 data-de="Aus dem Text-Stream wird ein Cockpit." data-en="The text stream becomes a cockpit.">Aus dem Text-Stream wird ein Cockpit.</h2>
+    <p class="lead" data-de="Klassische SSH-Clients sehen einen Byte-Strom. humibeam sieht einen Agenten bei der Arbeit — in drei sich ergänzenden Stufen."
+       data-en="Classic SSH clients see a byte stream. humibeam sees an agent at work — in three complementary stages.">…</p>
+    <div class="grid g3">
+      <div class="feat"><div class="ic">🎴</div>
+        <h3 data-de="1 · Inline-Approval-Karten" data-en="1 · Inline approval cards">1 · Inline-Approval-Karten</h3>
+        <p data-de="Will der Agent einen Befehl ausführen oder eine Datei ändern, erscheint eine Karte mit Aktion, Befehl bzw. farbigem Diff und Erlauben/Ablehnen — statt blindem y/n. Gefährliche Befehle (rm -rf, sudo, force) färben die Karte rot."
+           data-en="When the agent wants to run a command or edit a file, a card appears with the action, the command or a colored diff, and Allow/Deny — instead of a blind y/n. Dangerous commands (rm -rf, sudo, force) turn the card red.">…</p></div>
+      <div class="feat"><div class="ic">🔍</div>
+        <h3 data-de="2 · Echter Diff vom Server" data-en="2 · Real diff from the server">2 · Echter Diff vom Server</h3>
+        <p data-de="Ein Klick holt den tatsächlichen Arbeitsbaum-Diff (git diff) direkt vom Server über dieselbe Verbindung — farbig und verlässlich, unabhängig vom Terminal-Geflacker."
+           data-en="One click pulls the actual working-tree diff (git diff) straight from the server over the same connection — colored and reliable, independent of terminal flicker.">…</p></div>
+      <div class="feat"><div class="ic">🔗</div>
+        <h3 data-de="3 · Exakte Daten (opt-in)" data-en="3 · Exact data (opt-in)">3 · Exakte Daten (opt-in)</h3>
+        <p data-de="Ein winziger, installationsfreier Hook meldet jeden Tool-Call exakt — dann zeigt die Karte das echte Tool, den echten Befehl und einen echten Diff. Bleibt optional; der Hook entscheidet nichts."
+           data-en="A tiny, install-free hook reports every tool call exactly — then the card shows the real tool, the real command and a real diff. Stays optional; the hook decides nothing.">…</p></div>
+    </div>
   </section>
 
-  <footer>
-    humibeam · entwickelt aus humitext · <a style="color:var(--cyan)" href="https://humibeam.com">humibeam.com</a><br>
-    Betrieben von Blackboat Internet GmbH · Impressum &amp; Datenschutz auf blackboat.com
-  </footer>
-</div>
+  <section id="powers">
+    <div class="eyebrow" data-de="Die Superkräfte" data-en="The superpowers">Die Superkräfte</div>
+    <h2 data-de="Was kein anderer SSH-Client kann." data-en="What no other SSH client can do.">Was kein anderer SSH-Client kann.</h2>
+    <p class="lead" data-de="Drei Dinge, die humibeam einzigartig machen — alle ohne jede Server-Installation, auch auf nacktem Ubuntu."
+       data-en="Three things that make humibeam unique — all with zero server install, even on bare Ubuntu.">…</p>
+    <div class="grid g3">
+      <div class="feat"><div class="ic">🖼️</div>
+        <h3 data-de="Screenshot-Paste über SSH" data-en="Screenshot paste over SSH">Screenshot-Paste über SSH</h3>
+        <p data-de="Cmd+V mit einem Bild lädt es über die bestehende Verbindung hoch und tippt den Remote-Pfad in die Session — Claude Code liest das Bild über sein Read-Tool. Kein zweiter Login, kein Clipboard-Hack."
+           data-en="Cmd+V with an image uploads it over the existing connection and types the remote path into the session — Claude Code reads the image via its Read tool. No second login, no clipboard hack.">…</p></div>
+      <div class="feat"><div class="ic">🎙️</div>
+        <h3 data-de="Sprach-Diktat — überall" data-en="Voice dictation — everywhere">Sprach-Diktat — überall</h3>
+        <p data-de="Hotkey halten, sprechen, loslassen. Im Terminal landet der Text in der Session, sonst global in jeder App. Transkription lokal (offline) oder online, mit Prompt-Profilen, die das Gesagte sauber formulieren."
+           data-en="Hold a hotkey, speak, release. In the terminal the text goes into the session, otherwise globally into any app. Transcription local (offline) or online, with prompt profiles that clean up what you said.">…</p></div>
+      <div class="feat"><div class="ic">📁</div>
+        <h3 data-de="Dateien ohne Server-Setup" data-en="Files with no server setup">Dateien ohne Server-Setup</h3>
+        <p data-de="Integrierter Datei-Browser über dieselbe Verbindung: Up/Download, Drag & Drop, Editor, Dual-Pane mit Sync, Quick Look — ganz ohne SFTP-Daemon."
+           data-en="Integrated file browser over the same connection: up/download, drag & drop, editor, dual-pane with sync, Quick Look — with no SFTP daemon.">…</p></div>
+    </div>
+  </section>
+
+  <section id="how">
+    <h2 data-de="In 60 Sekunden startklar" data-en="Ready in 60 seconds">In 60 Sekunden startklar</h2>
+    <p class="lead" data-de="Kein Server-Setup. Kein Agent. Nur dein Mac und SSH."
+       data-en="No server setup. No agent. Just your Mac and SSH.">…</p>
+    <div class="steps">
+      <div class="step"><div class="n">1</div><div>
+        <h4 data-de="Laden & öffnen" data-en="Download & open">Laden & öffnen</h4>
+        <p data-de="DMG laden, humibeam nach „Programme“ ziehen, öffnen. Notarisiert von Apple."
+           data-en="Download the DMG, drag humibeam to Applications, open. Notarized by Apple.">…</p></div></div>
+      <div class="step"><div class="n">2</div><div>
+        <h4 data-de="Server verbinden" data-en="Connect a server">Server verbinden</h4>
+        <p data-de="Profil anlegen (Host, Nutzer, Passwort oder Key) und verbinden. Funktioniert mit jedem SSH-Server."
+           data-en="Create a profile (host, user, password or key) and connect. Works with any SSH server.">…</p></div></div>
+      <div class="step"><div class="n">3</div><div>
+        <h4 data-de="claude starten" data-en="Start claude">claude starten</h4>
+        <p data-de="Starte deine agentische CLI über SSH — und steuere sie mit Sprache, Screenshots und Approval-Karten."
+           data-en="Launch your agentic CLI over SSH — and drive it with voice, screenshots and approval cards.">…</p></div></div>
+    </div>
+  </section>
+
+  <section id="features">
+    <div class="eyebrow" data-de="Alles drin" data-en="Everything included">Alles drin</div>
+    <h2 data-de="Funktionen im Überblick" data-en="Feature overview">Funktionen im Überblick</h2>
+    <p class="lead" data-de="Ein vollwertiges, modernes SSH-Terminal — plus das Agent-Cockpit obendrauf."
+       data-en="A full, modern SSH terminal — plus the agent cockpit on top.">…</p>
+    <ul class="featlist">
+      <li><b data-de="SSH-Terminal" data-en="SSH terminal">SSH-Terminal</b> <span data-de="(SwiftTerm, xterm-kompatibel)" data-en="(SwiftTerm, xterm-compatible)">(SwiftTerm)</span></li>
+      <li><b data-de="Multi-Session mit Seitenleiste" data-en="Multi-session with sidebar">Multi-Session</b></li>
+      <li><b data-de="Terminal / Dateien / Split" data-en="Terminal / Files / Split">Terminal / Dateien / Split</b></li>
+      <li><b data-de="Befehls-Palette (⌘K)" data-en="Command palette (⌘K)">Befehls-Palette (⌘K)</b></li>
+      <li><b data-de="Terminal-Suche (⌘F)" data-en="Terminal search (⌘F)">Terminal-Suche (⌘F)</b></li>
+      <li><b data-de="5 Themes" data-en="5 themes">5 Themes</b></li>
+      <li><b data-de="Auto-Reconnect + Keepalive" data-en="Auto-reconnect + keepalive">Auto-Reconnect + Keepalive</b></li>
+      <li><b data-de="Broadcast-Eingabe" data-en="Broadcast input">Broadcast-Eingabe</b></li>
+      <li><b data-de="Sitzungs-Wiederherstellung" data-en="Session restore">Sitzungs-Wiederherstellung</b></li>
+      <li><b data-de="Host-Manager (Keychain)" data-en="Host manager (Keychain)">Host-Manager (Keychain)</b></li>
+      <li><b data-de="~/.ssh/config-Import" data-en="~/.ssh/config import">~/.ssh/config-Import</b></li>
+      <li><b data-de="Passwort- oder Key-Auth" data-en="Password or key auth">Passwort- oder Key-Auth</b></li>
+      <li><b>ProxyJump / Bastion</b></li>
+      <li><b data-de="Port-Weiterleitung (ssh -L)" data-en="Port forwarding (ssh -L)">Port-Weiterleitung</b></li>
+      <li><b data-de="Screenshot-Paste über SSH" data-en="Screenshot paste over SSH">Screenshot-Paste über SSH</b></li>
+      <li><b data-de="Globales Sprach-Diktat (lokal/online)" data-en="Global voice dictation (local/online)">Globales Sprach-Diktat</b></li>
+      <li><b data-de="Drag & Drop von Dateien & Bildern" data-en="Drag & drop files & images">Drag & Drop</b></li>
+      <li><b data-de="Datei-Browser, Editor, Dual-Pane + Sync" data-en="File browser, editor, dual-pane + sync">Datei-Browser & Editor</b></li>
+      <li><b data-de=".tar.gz-Download, Quick Look, chmod" data-en=".tar.gz download, Quick Look, chmod">.tar.gz, Quick Look, chmod</b></li>
+      <li><b data-de="Agent-Cockpit: Approvals + echter Diff" data-en="Agent cockpit: approvals + real diff">Agent-Cockpit</b></li>
+      <li><b data-de="KI-Hilfe: erklären, Fehler beheben, Befehl vorschlagen" data-en="AI help: explain, fix errors, suggest command">KI-Hilfe</b></li>
+      <li><b data-de="Claude-Benachrichtigungen (wartet / fertig)" data-en="Claude notifications (waiting / done)">Claude-Benachrichtigungen</b></li>
+      <li><b data-de="Auto-Update mit Versionsanzeige" data-en="Auto-update with version display">Auto-Update</b></li>
+      <li><b data-de="Notarisiert (Apple Developer ID)" data-en="Notarized (Apple Developer ID)">Notarisiert</b></li>
+    </ul>
+  </section>
+
+  <section id="download" class="download">
+    <div class="eyebrow" data-de="Loslegen" data-en="Get started">Loslegen</div>
+    <h2 data-de="humibeam — kostenlos für macOS" data-en="humibeam — free for macOS">humibeam — kostenlos für macOS</h2>
+    <div class="dlbox">
+      <div class="price" data-de="100% kostenlos · keine Anmeldung" data-en="100% free · no sign-up">100% kostenlos · keine Anmeldung</div>
+      <a class="btn" href="/Humibeam.dmg" id="dlbtn" data-de="↓ humibeam laden (.dmg)" data-en="↓ Download humibeam (.dmg)">↓ humibeam laden (.dmg)</a>
+      <div class="req" data-de="macOS 13 Ventura oder neuer · Apple Silicon & Intel · notarisiert von Apple · Universal Binary"
+           data-en="macOS 13 Ventura or later · Apple Silicon & Intel · notarized by Apple · universal binary">…</div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap foot-grid">
+    <div>
+      <div class="brand" style="margin-bottom:10px"><span class="dot"></span> humibeam</div>
+      <div data-de="Das macOS-Cockpit für KI-Agenten." data-en="The macOS cockpit for AI agents.">Das macOS-Cockpit für KI-Agenten.</div>
+    </div>
+    <div class="imprint">
+      <b data-de="Impressum" data-en="Imprint">Impressum</b><br>
+      Humiqa GmbH<br>
+      Auerspergstraße 11<br>
+      1080 Wien, <span data-de="Österreich" data-en="Austria">Österreich</span><br>
+      <a href="https://humiqa.com">humiqa.com</a>
+    </div>
+  </div>
+  <div class="wrap" style="margin-top:24px;color:var(--dim)">© <span id="yr"></span> Humiqa GmbH · humibeam</div>
+</footer>
+
+<script>
+  function setLang(l){
+    document.documentElement.lang=l;
+    document.body.className='lang-'+l;
+    document.getElementById('b-de').classList.toggle('active',l==='de');
+    document.getElementById('b-en').classList.toggle('active',l==='en');
+    document.querySelectorAll('[data-de]').forEach(function(el){
+      var v=el.getAttribute('data-'+l); if(v===null) return;
+      if(el.tagName==='META') el.setAttribute('content',v); else el.textContent=v;
+    });
+    try{localStorage.setItem('humibeam_lang',l);}catch(e){}
+  }
+  document.getElementById('yr').textContent=new Date().getFullYear();
+  (function(){
+    var saved; try{saved=localStorage.getItem('humibeam_lang');}catch(e){}
+    var l = saved || (((navigator.language||'').slice(0,2)==='de')?'de':'en');
+    setLang(l);
+  })();
+</script>
 </body>
 </html>
