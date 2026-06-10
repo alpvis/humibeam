@@ -29,15 +29,21 @@ curl -fsSL "$RAW/index.html" -o "$LANDING_HOST/index.html" || die "index.html do
 curl -fsSL "$DMG_URL"        -o "$LANDING_HOST/Humibeam.dmg" || die "dmg download"
 echo "   index.html $(wc -c <"$LANDING_HOST/index.html")B · DMG $(du -h "$LANDING_HOST/Humibeam.dmg"|cut -f1)"
 
-# 2) compose: ro-Mount ergänzen (idempotent) + Container neu aufsetzen
-if ! grep -q "$LANDING_HOST:/var/www/humibeam/landing" "$COMPOSE"; then
+# 2a) compose: ro-Mount ergänzen (idempotent)
+if ! grep -q "humibeam-landing:/var/www/humibeam/landing" "$COMPOSE"; then
   cp -a "$COMPOSE" "$COMPOSE.bak.$(date +%s)"
   sed -i "/fronela-landing:\/var\/www\/fronela\/landing:ro/a\\      - $LANDING_HOST:/var/www/humibeam/landing:ro" "$COMPOSE"
-  echo "▶︎ 2) Mount ergänzt — cloud-nginx neu aufsetzen"
-  docker compose up -d "$NGINX_CT" || die "compose up fehlgeschlagen"
+  echo "▶︎ 2a) Mount in compose ergänzt"
+else
+  echo "▶︎ 2a) Mount in compose bereits vorhanden"
+fi
+# 2b) cloud-nginx NUR neu aufsetzen (ohne Abhängigkeiten!), wenn der laufende Container den Mount noch nicht hat
+if ! docker inspect "$NGINX_CT" --format '{{range .Mounts}}{{.Destination}} {{end}}' 2>/dev/null | grep -q '/var/www/humibeam/landing'; then
+  echo "▶︎ 2b) cloud-nginx neu aufsetzen (--no-deps, nur dieser Container)"
+  docker compose up -d --no-deps --force-recreate "$NGINX_CT" || die "compose up (cloud-nginx) fehlgeschlagen"
   sleep 2
 else
-  echo "▶︎ 2) Mount bereits vorhanden"
+  echo "▶︎ 2b) cloud-nginx hat den Mount bereits"
 fi
 
 # 3) Zertifikat (ACME läuft über den vorhandenen Catch-all-:80-Block)
