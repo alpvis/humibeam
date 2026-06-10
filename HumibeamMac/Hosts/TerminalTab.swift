@@ -75,6 +75,8 @@ final class TerminalTab: Identifiable {
     // Claude Code permission prompt → Allow/Deny buttons
     var awaitingApproval = false
     var approvalAllowAlways = false
+    /// Structured prompt for the inline approval card (action, command/diff preview).
+    var approval: ClaudeApproval?
     // Files Claude recently touched → one-click open in the remote editor
     var recentPaths: [String] = []
 

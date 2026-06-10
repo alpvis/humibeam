@@ -124,6 +124,7 @@ final class HumibeamShell {
             let waiting = controller?.awaitingApproval ?? false
             tab?.awaitingApproval = waiting
             tab?.approvalAllowAlways = controller?.approvalAllowAlways ?? false
+            tab?.approval = controller?.approval
             if waiting, let tab {
                 Self.postClaudeAlert(tab, title: "Claude wartet auf dich",
                                      body: "\(tab.host.displayName): Erlaubnis nötig")

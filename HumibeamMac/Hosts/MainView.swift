@@ -223,8 +223,12 @@ private struct SessionDetailView: View {
             if tab.searchVisible {
                 SearchBar(tab: tab); Divider()
             }
-            if tab.awaitingApproval {
-                approvalBar; Divider()
+            if let approval = tab.approval {
+                ApprovalCard(approval: approval,
+                             onApprove: { tab.controller.approve() },
+                             onApproveAlways: { tab.controller.approveAlways() },
+                             onDeny: { tab.controller.deny() })
+                Divider()
             }
             content
             if !isFullscreen { statusBar }
@@ -269,22 +273,6 @@ private struct SessionDetailView: View {
         }
     }
 
-    private var approvalBar: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "hand.raised.fill").foregroundStyle(.orange)
-            Text("Claude möchte etwas ausführen — erlauben?").font(.callout).fontWeight(.medium)
-            Spacer()
-            Button("Ablehnen") { tab.controller.deny() }.keyboardShortcut(.cancelAction)
-            if tab.approvalAllowAlways {
-                Button("Immer erlauben") { tab.controller.approveAlways() }
-            }
-            Button("Erlauben") { tab.controller.approve() }
-                .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
-        }
-        .padding(.horizontal, 12).padding(.vertical, 8)
-        .background(Color.orange.opacity(0.12))
-    }
-
     private var statusBar: some View {
         HStack(spacing: 8) {
             Circle().fill(Color(nsColor: tab.health.color)).frame(width: 8, height: 8)
@@ -296,6 +284,96 @@ private struct SessionDetailView: View {
             }
         }
         .padding(.horizontal, 10).padding(.vertical, 5).background(.bar)
+    }
+}
+
+// MARK: - Inline approval card (the "agent cockpit")
+
+/// Renders a parsed Claude Code permission prompt as a native card: action type, the command or
+/// a colored diff, and Allow/Deny buttons that send the keystrokes Claude expects. See
+/// docs/AGENT-COCKPIT.md.
+private struct ApprovalCard: View {
+    let approval: ClaudeApproval
+    let onApprove: () -> Void
+    let onApproveAlways: () -> Void
+    let onDeny: () -> Void
+
+    private var accent: SwiftUI.Color { approval.looksDangerous ? .red : .orange }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // Header: icon + action + "Claude Code" tag
+            HStack(spacing: 8) {
+                Image(systemName: approval.looksDangerous ? "exclamationmark.triangle.fill" : approval.action.symbol)
+                    .foregroundStyle(accent)
+                Text(approval.action.label).font(.headline)
+                if approval.looksDangerous {
+                    Text("RISKANT").font(.caption2).fontWeight(.bold)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Color.red.opacity(0.18), in: Capsule())
+                        .foregroundStyle(.red)
+                }
+                Spacer()
+                Label("Claude Code", systemImage: "sparkles")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+
+            if !approval.preview.isEmpty {
+                previewBlock
+            }
+
+            // Question + actions
+            HStack(spacing: 10) {
+                Text(approval.question).font(.callout).foregroundStyle(.secondary).lineLimit(2)
+                Spacer()
+                Button("Ablehnen", role: .cancel) { onDeny() }
+                    .keyboardShortcut(.cancelAction)
+                if approval.allowAlways {
+                    Button("Immer erlauben") { onApproveAlways() }
+                }
+                Button(approval.looksDangerous ? "Trotzdem erlauben" : "Erlauben") { onApprove() }
+                    .buttonStyle(.borderedProminent).tint(accent)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(14)
+        .background(accent.opacity(0.10))
+        .overlay(Rectangle().frame(width: 3).foregroundStyle(accent), alignment: .leading)
+    }
+
+    private var previewBlock: some View {
+        ScrollView(.vertical) {
+            VStack(alignment: .leading, spacing: 1) {
+                ForEach(approval.preview) { line in
+                    Text(line.text.isEmpty ? " " : line.text)
+                        .font(.system(.callout, design: .monospaced))
+                        .foregroundStyle(color(for: line.kind))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 8).padding(.vertical, 1)
+                        .background(background(for: line.kind))
+                        .textSelection(.enabled)
+                }
+            }
+            .padding(.vertical, 4)
+        }
+        .frame(maxHeight: 220)
+        .background(SwiftUI.Color.black.opacity(0.25), in: RoundedRectangle(cornerRadius: 6))
+    }
+
+    private func color(for kind: ClaudeApproval.Line.Kind) -> SwiftUI.Color {
+        switch kind {
+        case .add:     return .green
+        case .remove:  return .red
+        case .context: return .primary
+        }
+    }
+
+    private func background(for kind: ClaudeApproval.Line.Kind) -> SwiftUI.Color {
+        switch kind {
+        case .add:     return .green.opacity(0.12)
+        case .remove:  return .red.opacity(0.12)
+        case .context: return .clear
+        }
     }
 }
 

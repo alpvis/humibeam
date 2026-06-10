@@ -32,6 +32,8 @@ final class TerminalSessionController: NSObject, TerminalViewDelegate {
     private(set) var awaitingApproval = false
     /// Whether the prompt offers a "don't ask again" (option 2) choice.
     private(set) var approvalAllowAlways = false
+    /// The structured prompt (action type, command/diff preview) for the inline approval card.
+    private(set) var approval: ClaudeApproval?
     var onApprovalChange: (() -> Void)?
 
     /// Files Claude Code recently touched (parsed from its tool-call output), newest first.
@@ -266,14 +268,13 @@ final class TerminalSessionController: NSObject, TerminalViewDelegate {
     /// Heuristically detects Claude Code's permission prompt in the recent output so the UI can
     /// surface Allow/Deny buttons. Looks only at the tail (the prompt is the last thing on screen).
     private func detectApprovalPrompt() {
-        let tail = transcript.suffix(700).lowercased()
-        let hasYes = tail.contains("1. yes") || tail.contains("❯ 1.")
-        let hasNo = tail.contains("no, and tell claude") || tail.contains("3. no") || tail.contains("2. no")
-        let prompt = hasYes && (hasNo || tail.contains("do you want"))
-        let allowAlways = tail.contains("don't ask again") || tail.contains("don’t ask again")
-        if prompt != awaitingApproval || allowAlways != approvalAllowAlways {
+        let parsed = ClaudeApproval.parse(transcript)
+        let prompt = parsed != nil
+        let allowAlways = parsed?.allowAlways ?? false
+        if prompt != awaitingApproval || allowAlways != approvalAllowAlways || parsed != approval {
             awaitingApproval = prompt
             approvalAllowAlways = allowAlways
+            approval = parsed
             onApprovalChange?()
         }
     }
@@ -287,6 +288,7 @@ final class TerminalSessionController: NSObject, TerminalViewDelegate {
         sendToShell(keys)
         awaitingApproval = false
         approvalAllowAlways = false
+        approval = nil
         onApprovalChange?()
     }
 
