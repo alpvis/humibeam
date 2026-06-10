@@ -73,12 +73,21 @@ und nimmt das erste Verzeichnis, das in einem Git-Repo liegt; `$HOME` als letzte
 *vorgeschlagene, noch nicht angewandte* Änderung lebt nur in Claudes Prompt — dafür dient
 die Inline-Karte aus Stufe 1. Beide ergänzen sich.
 
-### Stufe 3 — Strukturierte Brücke (opt-in, 100 % exakt)
+### Stufe 3 — Strukturierte Brücke (opt-in, 100 % exakt) *(implementiert)*
 
-Für Power-User ein winziger **Claude-Code-Hook** (`PreToolUse`), der die Tool-Calls als
-JSON über einen Seitenkanal (Unix-Socket / Datei in `~/.humibeam/`) ausgibt. Dann sind
-die Karten 100 % exakt (Tool, Argumente, vollständiger Diff) — ohne PTY-Scraping.
-Bleibt optional, damit der Zero-Install-Vorteil für den Normalfall erhalten bleibt.
+Ein winziger **Claude-Code-`PreToolUse`-Hook** (`tools/humibeam-hook.sh`) schreibt jeden
+Tool-Call als JSON-Zeile nach `~/.humibeam/events.jsonl`. `ClaudeBridge` liest die jüngste
+Zeile über den Exec-Channel und baut eine **100 % exakte** Karte (echtes Tool, Befehl,
+echter Diff aus `old_string`/`new_string`). Erkennbar am grünen „exakt"-Badge.
+
+- **Abhängigkeitsfrei:** Hook = nur bash + coreutils (kein `jq`). Zero-Install bleibt für alle
+  anderen erhalten — die Brücke ist **opt-in** (Menü „Claude-Bridge…").
+- **Nicht-blockierend:** Der Hook entscheidet nichts (exit 0) — Claude zeigt seinen normalen
+  Prompt, humibeams Buttons senden weiter `1`/`2`/`Esc`. Die Brücke liefert nur exakte *Anzeige*.
+- **Robust gegen Feldnamen:** akzeptiert `old_string`/`old_str`, `content`/`file_text` etc.
+- **settings.json-Merge** passiert in Swift (`JSONSerialization`), mit Backup, kein `jq` nötig.
+- **Feldnamen-Caveat:** Claude Codes Tool-Input-Felder können je nach Version variieren —
+  beim ersten Live-Test gegen die echte Claude-Version verifizieren/kalibrieren.
 
 ---
 
@@ -94,4 +103,4 @@ Das verschiebt die Wahrnehmung von „Terminal mit SSH" zu „Mission Control f�
 
 - [x] Stufe 1: Parser (`ClaudeApproval.swift`) + Inline-Karte (`ApprovalCard` in `MainView`).
 - [x] Stufe 2: Echter Diff über Exec-Channel (`GitDiffService.swift` + `GitDiffSheet`).
-- [ ] Stufe 3: Opt-in `PreToolUse`-Hook-Brücke (100 % exakte Tool-Calls).
+- [x] Stufe 3: Opt-in `PreToolUse`-Hook-Brücke (`ClaudeBridge.swift` + `tools/humibeam-hook.sh`).

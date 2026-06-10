@@ -241,6 +241,7 @@ private struct SessionDetailView: View {
         .sheet(isPresented: $tab.showEditor) { RemoteEditor(shell: shell, tab: tab) }
         .sheet(isPresented: $tab.showForwards) { ForwardsSheet(shell: shell, tab: tab) }
         .sheet(isPresented: $tab.showDiff) { GitDiffSheet(tab: tab) }
+        .sheet(isPresented: $tab.showBridge) { ClaudeBridgeSheet(tab: tab) }
     }
 
     @ViewBuilder
@@ -318,6 +319,11 @@ private struct ApprovalCard: View {
                         .foregroundStyle(.red)
                 }
                 Spacer()
+                if approval.exact {
+                    Label("exakt", systemImage: "checkmark.seal.fill")
+                        .font(.caption2).foregroundStyle(.green)
+                        .help("Daten direkt aus der Claude-Code-Bridge (Stufe 3)")
+                }
                 Label("Claude Code", systemImage: "sparkles")
                     .font(.caption2).foregroundStyle(.secondary)
             }
@@ -507,6 +513,88 @@ private struct GitDiffSheet: View {
     }
 }
 
+// MARK: - Claude bridge setup (Stufe 3)
+
+/// Opt-in: installs/removes the Claude Code PreToolUse hook that feeds humibeam exact tool-calls.
+private struct ClaudeBridgeSheet: View {
+    @Bindable var tab: TerminalTab
+    @State private var status: ClaudeBridge.Status?
+    @State private var busy = false
+    @State private var message: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Label("Claude-Bridge", systemImage: "link").font(.headline)
+                Spacer()
+                Button("Fertig") { tab.showBridge = false }.keyboardShortcut(.defaultAction)
+            }
+
+            Text("""
+            Installiert einen Claude-Code-Hook auf dem Server, der jeden Tool-Aufruf als JSON meldet. \
+            Dann zeigt humibeam **exakte** Approval-Karten (echter Befehl, echter Diff) statt aus dem \
+            Terminal geratener. Optional — Claude funktioniert auch ohne. Der Hook entscheidet nichts \
+            selbst; deine Erlauben/Ablehnen-Knöpfe bleiben unverändert.
+            """)
+            .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 8) {
+                statusDot(status?.hookInstalled ?? false)
+                Text("Hook-Skript")
+                statusDot(status?.settingsConfigured ?? false)
+                Text("settings.json")
+                if let s = status, s.active {
+                    Text("aktiv").font(.caption).foregroundStyle(.green)
+                }
+            }
+            .font(.callout)
+
+            if let message {
+                Text(message).font(.caption).foregroundStyle(.secondary)
+            }
+
+            HStack {
+                if busy { ProgressView().controlSize(.small) }
+                Spacer()
+                if status?.active == true {
+                    Button("Entfernen", role: .destructive) { run { await ClaudeBridge.remove(connection: tab.controller.connection) } }
+                        .disabled(busy)
+                }
+                Button(status?.active == true ? "Neu installieren" : "Bridge installieren") {
+                    run { await ClaudeBridge.install(connection: tab.controller.connection) }
+                }
+                .buttonStyle(.borderedProminent).disabled(busy)
+            }
+
+            Text("Hinweis: Eine bereits laufende `claude`-Sitzung muss neu gestartet werden, damit der Hook greift.")
+                .font(.caption2).foregroundStyle(.tertiary)
+        }
+        .padding(20).frame(width: 480)
+        .task { await reload() }
+    }
+
+    private func statusDot(_ ok: Bool) -> some View {
+        Image(systemName: ok ? "checkmark.circle.fill" : "circle")
+            .foregroundStyle(ok ? .green : .secondary)
+    }
+
+    private func reload() async {
+        status = await ClaudeBridge.status(connection: tab.controller.connection)
+    }
+
+    private func run(_ op: @escaping () async -> Result<Void, ClaudeBridge.BridgeError>) {
+        busy = true; message = nil
+        Task {
+            switch await op() {
+            case .success: message = "Erledigt."
+            case .failure(let e): message = "Fehler: \(e.localizedDescription)"
+            }
+            await reload()
+            busy = false
+        }
+    }
+}
+
 // MARK: - Professional session toolbar
 
 private struct SessionToolbar: View {
@@ -597,6 +685,7 @@ private struct SessionToolbar: View {
                     Button("Snippets verwalten…") { NotificationCenter.default.post(name: .manageSnippets, object: nil) }
                 }
             }
+            Button("Claude-Bridge…") { tab.showBridge = true }.disabled(!tab.connected)
             Button("Port-Weiterleitung…") { tab.showForwards = true }.disabled(!tab.connected)
             Toggle("Eingabe an alle senden (Broadcast)", isOn: $shell.broadcastInput)
             Divider()

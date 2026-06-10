@@ -128,6 +128,16 @@ final class HumibeamShell {
             if waiting, let tab {
                 Self.postClaudeAlert(tab, title: "Claude wartet auf dich",
                                      body: "\(tab.host.displayName): Erlaubnis nötig")
+                // Stufe 3: if the opt-in bridge is active, upgrade the scraped card to exact data.
+                let allowAlways = controller?.approvalAllowAlways ?? false
+                let conn = controller?.connection
+                Task { @MainActor [weak tab] in
+                    guard let exact = await ClaudeBridge.latestApproval(connection: conn),
+                          let tab, tab.awaitingApproval else { return }
+                    var ex = exact
+                    ex.allowAlways = allowAlways   // the bridge payload doesn't carry the "option 2" choice
+                    tab.approval = ex
+                }
             }
         }
         controller.onPathsChange = { [weak tab, weak controller] in

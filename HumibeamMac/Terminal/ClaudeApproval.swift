@@ -55,6 +55,8 @@ struct ClaudeApproval: Equatable {
     /// Command text (bash) or diff/content lines (edits). May be empty if not recoverable.
     var preview: [Line]
     var allowAlways: Bool
+    /// True when this came from the opt-in Claude-Code bridge (Stufe 3) = 100% exact, not scraped.
+    var exact: Bool = false
 
     /// True when the command preview contains a genuinely dangerous pattern.
     var looksDangerous: Bool {
@@ -63,6 +65,90 @@ struct ClaudeApproval: Equatable {
         let patterns = ["rm -rf", "rm -fr", "mkfs", ":(){", "dd if=", "> /dev/sd",
                         "force", "--hard", "drop table", "drop database", "sudo rm"]
         return patterns.contains { cmd.contains($0) }
+    }
+
+    // MARK: - Exact construction from a bridge tool-call (Stufe 3)
+
+    /// Builds an exact approval from a Claude Code PreToolUse payload (`tool_name` + `tool_input`).
+    /// Robust against field-name variants (old_string/old_str, content/file_text) since these have
+    /// historically differed between versions. `allowAlways` is filled in by the caller from the
+    /// scraped prompt (the bridge payload doesn't say whether option 2 is offered).
+    static func fromTool(name: String, input: [String: Any]) -> ClaudeApproval? {
+        func str(_ keys: String...) -> String? {
+            for k in keys { if let v = input[k] as? String { return v } }
+            return nil
+        }
+        let action: Action
+        var subject = ""
+        var preview: [Line] = []
+
+        switch name {
+        case "Bash":
+            action = .bash
+            let cmd = str("command") ?? ""
+            subject = cmd
+            preview = cmd.split(separator: "\n", omittingEmptySubsequences: false)
+                .map { Line(kind: .context, text: String($0)) }
+        case "Edit":
+            action = .edit
+            subject = str("file_path", "filePath") ?? ""
+            preview = diffLines(old: str("old_string", "old_str") ?? "",
+                                new: str("new_string", "new_str") ?? "")
+        case "MultiEdit":
+            action = .edit
+            subject = str("file_path", "filePath") ?? ""
+            if let edits = input["edits"] as? [[String: Any]] {
+                for e in edits {
+                    let o = (e["old_string"] as? String) ?? (e["old_str"] as? String) ?? ""
+                    let n = (e["new_string"] as? String) ?? (e["new_str"] as? String) ?? ""
+                    preview += diffLines(old: o, new: n)
+                    preview.append(Line(kind: .context, text: ""))
+                }
+            }
+        case "Write":
+            action = .write
+            subject = str("file_path", "filePath") ?? ""
+            let content = str("content", "file_text") ?? ""
+            preview = content.split(separator: "\n", omittingEmptySubsequences: false)
+                .prefix(300).map { Line(kind: .add, text: String($0)) }
+        case "Read":
+            action = .read
+            subject = str("file_path", "filePath") ?? ""
+        case "WebFetch", "WebSearch":
+            action = .web
+            subject = str("url", "query") ?? ""
+            if !subject.isEmpty { preview = [Line(kind: .context, text: subject)] }
+        default:
+            action = .other
+            subject = name
+        }
+
+        let base = (subject as NSString).lastPathComponent
+        let question: String
+        switch action {
+        case .bash:  question = "Befehl ausführen?"
+        case .edit:  question = base.isEmpty ? "Änderung anwenden?" : "Änderung an \(base) anwenden?"
+        case .write: question = base.isEmpty ? "Datei schreiben?" : "\(base) schreiben?"
+        case .read:  question = "\(base) lesen?"
+        case .web:   question = "Web-Zugriff erlauben?"
+        case .fetch: question = "Herunterladen?"
+        case .other: question = "\(name) ausführen?"
+        }
+        return ClaudeApproval(action: action, question: question, preview: preview,
+                              allowAlways: false, exact: true)
+    }
+
+    private static func diffLines(old: String, new: String) -> [Line] {
+        var out: [Line] = []
+        if !old.isEmpty {
+            out += old.split(separator: "\n", omittingEmptySubsequences: false)
+                .map { Line(kind: .remove, text: String($0)) }
+        }
+        if !new.isEmpty {
+            out += new.split(separator: "\n", omittingEmptySubsequences: false)
+                .map { Line(kind: .add, text: String($0)) }
+        }
+        return Array(out.prefix(300))
     }
 
     // MARK: - Parsing

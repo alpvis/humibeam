@@ -85,6 +85,9 @@ final class TerminalTab: Identifiable {
     var diffBusy = false
     var diffResult: GitDiffResult?
 
+    // Stufe 3: opt-in Claude-Code bridge (exact tool-calls)
+    var showBridge = false
+
     // AI helper
     var claudeDetected = false
     var showAIPanel = false
