@@ -82,9 +82,7 @@ struct SidebarView: View {
         .listStyle(.sidebar)
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 0) {
-                Divider()
                 updateRow
-                Divider()
                 bottomBar
             }
         }
