@@ -168,6 +168,14 @@ final class SessionManager: NSObject, NSWindowDelegate {
     /// Types text into the currently selected session. Returns true if handled.
     @discardableResult
     func sendTextToFocusedSession(_ text: String) -> Bool {
+        // Only capture dictation into the terminal when humibeam's terminal is *actually* focused.
+        // Otherwise return false so the text pastes into whatever external app is frontmost — the
+        // global "dictate anywhere" behavior from humitext. (Previously this returned true whenever
+        // any session was connected, so dictation always landed in the terminal.)
+        guard NSApp.isActive,
+              let key = NSApp.keyWindow, key === mainWindow,
+              key.firstResponder is TerminalView else { return false }
+
         guard let id = selectedSessionID else { return false }
         if let tab = shell.tabs.first(where: { $0.id == id }), tab.connected {
             tab.controller.sendToShell(text)
