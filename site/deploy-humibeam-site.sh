@@ -1,120 +1,109 @@
 #!/usr/bin/env bash
-# humibeam.com Deploy in den docker-compose nginx/certbot-Stack (als root via sudo bash).
+# humibeam.com Deploy in den docker-compose nginx/certbot-Stack (/home/ali/infra), als root.
 #   curl -fsSL https://raw.githubusercontent.com/alpvis/humibeam/main/site/deploy-humibeam-site.sh | sudo bash
 #
-# SICHER: Backup der zentralen nginx-Config, `nginx -t` IM CONTAINER vor jedem Reload,
-# automatischer ROLLBACK bei Fehler. Lässt alle anderen Domains (alpvis, chronela, humiqa …)
-# unangetastet. Zwei-Phasen: erst HTTP+ACME hoch, dann Zertifikat, dann HTTPS.
+# SICHER & idempotent: Backup von nginx-cloud.conf + docker-compose.yml, `nginx -t` IM CONTAINER
+# vor jedem Reload, ROLLBACK bei Fehler. Lässt alle anderen Domains unangetastet.
 set -uo pipefail
-
+INFRA="/home/ali/infra"
+CONF="$INFRA/nginx-cloud.conf"
+COMPOSE="$INFRA/docker-compose.yml"
+NGINX_CT="cloud-nginx"
 DOMAIN="humibeam.com"
 EMAIL="ali@uelkue.at"
-INFRA="/home/ali/infra"
-CONF="$INFRA/nginx-active.conf"
-NGINX_CT="cloud-nginx"
+LANDING_HOST="/home/ali/humibeam-landing"
+SSL_HOST="$INFRA/ssl"
+CERT_VOL="infra_certbot_webroot"
 RAW="https://raw.githubusercontent.com/alpvis/humibeam/main/site"
 DMG_URL="https://github.com/alpvis/humibeam/releases/latest/download/Humibeam.dmg"
 
 die(){ echo "❌ $*" >&2; exit 1; }
-[ -f "$CONF" ] || die "nginx-Config nicht gefunden: $CONF"
-docker inspect "$NGINX_CT" >/dev/null 2>&1 || die "Container $NGINX_CT läuft nicht"
+cd "$INFRA" || die "kein $INFRA"
+[ -f "$CONF" ] || die "fehlt: $CONF"
+[ -f "$COMPOSE" ] || die "fehlt: $COMPOSE"
 
-mounts(){ docker inspect "$NGINX_CT" --format '{{range .Mounts}}{{.Source}}|{{.Destination}}{{"\n"}}{{end}}'; }
-WWW_HOST=$(mounts | awk -F'|' '$2=="/var/www"{print $1; exit}')
-[ -z "$WWW_HOST" ] && WWW_HOST=$(mounts | awk -F'|' '$2 ~ /\/var\/www$/{print $1; exit}')
-SSL_HOST=$(mounts  | awk -F'|' '$2=="/etc/nginx/ssl"{print $1; exit}')
-CHAL_HOST=$(mounts | awk -F'|' '$2=="/var/www/certbot"{print $1; exit}')
-[ -z "$CHAL_HOST" ] && [ -n "$WWW_HOST" ] && CHAL_HOST="$WWW_HOST/certbot"
-echo "▶︎ Mounts: www=$WWW_HOST ssl=$SSL_HOST certbot=$CHAL_HOST"
-[ -n "$WWW_HOST" ] || die "Konnte /var/www-Mount von $NGINX_CT nicht ermitteln"
-[ -n "$SSL_HOST" ] || die "Konnte /etc/nginx/ssl-Mount von $NGINX_CT nicht ermitteln"
+# 1) Landing-Dateien
+echo "▶︎ 1) Landing nach $LANDING_HOST"
+mkdir -p "$LANDING_HOST"
+curl -fsSL "$RAW/index.html" -o "$LANDING_HOST/index.html" || die "index.html download"
+curl -fsSL "$DMG_URL"        -o "$LANDING_HOST/Humibeam.dmg" || die "dmg download"
+echo "   index.html $(wc -c <"$LANDING_HOST/index.html")B · DMG $(du -h "$LANDING_HOST/Humibeam.dmg"|cut -f1)"
 
-# 1) Seite + DMG dorthin, wo der Container serviert (Muster wie humiqa: /var/www/<d>/landing)
-LANDING="$WWW_HOST/humibeam/landing"
-echo "▶︎ Seite + DMG nach $LANDING"
-mkdir -p "$LANDING"
-curl -fsSL "$RAW/index.html" -o "$LANDING/index.html" || die "index.html-Download fehlgeschlagen"
-curl -fsSL "$DMG_URL"        -o "$LANDING/Humibeam.dmg" || die "DMG-Download fehlgeschlagen"
-echo "   index.html: $(wc -c <"$LANDING/index.html") B · DMG: $(du -h "$LANDING/Humibeam.dmg"|cut -f1)"
-
-# 2) Backup + Reload-Helfer mit Rollback
-BAK="$CONF.bak.$(date +%Y%m%d-%H%M%S)"
-cp -a "$CONF" "$BAK"; echo "▶︎ Backup: $BAK"
-reload_or_rollback(){
-  if docker exec "$NGINX_CT" nginx -t >/tmp/hb_nginxt 2>&1; then
-    docker exec "$NGINX_CT" nginx -s reload && return 0
-  fi
-  echo "‼️  nginx -t fehlgeschlagen — Rollback auf $BAK"; cat /tmp/hb_nginxt
-  cp -a "$BAK" "$CONF"; docker exec "$NGINX_CT" nginx -s reload 2>/dev/null || true
-  return 1
-}
-
-# 3) Phase A: HTTP-Block (ACME + Seite über HTTP), nur wenn noch nicht vorhanden
-if ! grep -q "server_name ${DOMAIN}" "$CONF"; then
-  echo "▶︎ HTTP-vhost einfügen"
-  cat >>"$CONF" <<NGINX
-
-# ===== humibeam.com (humibeam deploy) =====
-server {
-    listen 80;
-    listen [::]:80;
-    server_name ${DOMAIN} www.${DOMAIN};
-    location /.well-known/acme-challenge/ { root /var/www/certbot; }
-    root /var/www/humibeam/landing;
-    index index.html;
-    charset utf-8;
-    location / { try_files \$uri \$uri/ =404; }
-}
-NGINX
-  reload_or_rollback || die "HTTP-vhost ungültig — abgebrochen (nichts verändert)"
+# 2) compose: ro-Mount ergänzen (idempotent) + Container neu aufsetzen
+if ! grep -q "$LANDING_HOST:/var/www/humibeam/landing" "$COMPOSE"; then
+  cp -a "$COMPOSE" "$COMPOSE.bak.$(date +%s)"
+  sed -i "/fronela-landing:\/var\/www\/fronela\/landing:ro/a\\      - $LANDING_HOST:/var/www/humibeam/landing:ro" "$COMPOSE"
+  echo "▶︎ 2) Mount ergänzt — cloud-nginx neu aufsetzen"
+  docker compose up -d "$NGINX_CT" || die "compose up fehlgeschlagen"
+  sleep 2
 else
-  echo "▶︎ humibeam.com bereits in der Config — überspringe HTTP-Block"
+  echo "▶︎ 2) Mount bereits vorhanden"
 fi
 
-# 4) Zertifikat über certbot-Container (webroot), Ablage im selben ssl-Volume
-mkdir -p "$CHAL_HOST"
-if [ ! -f "$SSL_HOST/live/${DOMAIN}/fullchain.pem" ]; then
-  echo "▶︎ Let's-Encrypt-Zertifikat holen (webroot)"
+# 3) Zertifikat (ACME läuft über den vorhandenen Catch-all-:80-Block)
+if [ ! -f "$SSL_HOST/live/$DOMAIN/fullchain.pem" ]; then
+  echo "▶︎ 3) Let's-Encrypt-Zertifikat holen"
   docker run --rm \
     -v "$SSL_HOST":/etc/letsencrypt \
-    -v "$CHAL_HOST":/var/www/certbot \
+    -v "${CERT_VOL}":/var/www/certbot \
     certbot/certbot certonly --webroot -w /var/www/certbot \
-    -d "${DOMAIN}" -d "www.${DOMAIN}" \
-    --non-interactive --agree-tos -m "$EMAIL" \
-    || docker run --rm -v "$SSL_HOST":/etc/letsencrypt -v "$CHAL_HOST":/var/www/certbot \
-       certbot/certbot certonly --webroot -w /var/www/certbot -d "${DOMAIN}" \
-       --non-interactive --agree-tos -m "$EMAIL" \
-    || echo "   (Zertifikat fehlgeschlagen — Seite bleibt vorerst auf HTTP erreichbar.)"
+    -d "$DOMAIN" --non-interactive --agree-tos -m "$EMAIL" \
+    || echo "   ⚠️ Zertifikat fehlgeschlagen — Block wird übersprungen, Seite ggf. nur über Default-Cert."
+else
+  echo "▶︎ 3) Zertifikat existiert bereits"
 fi
 
-# 5) Phase B: HTTPS-Block, nur wenn Cert da ist und noch kein 443-Block existiert
-if [ -f "$SSL_HOST/live/${DOMAIN}/fullchain.pem" ] && ! grep -q "ssl_certificate /etc/nginx/ssl/live/${DOMAIN}/" "$CONF"; then
-  echo "▶︎ HTTPS-vhost einfügen + HTTP auf HTTPS umleiten"
-  cp -a "$CONF" "$CONF.bak.pre-https.$(date +%s)"
-  cat >>"$CONF" <<NGINX
+# 4) nginx-Server-Block für humibeam.com einfügen (vor dem letzten '}' = Ende des http{})
+if [ -f "$SSL_HOST/live/$DOMAIN/fullchain.pem" ] && ! grep -q "server_name $DOMAIN;" "$CONF"; then
+  echo "▶︎ 4) HTTPS-Server-Block einfügen"
+  BAK="$CONF.bak.$(date +%Y%m%d-%H%M%S)"; cp -a "$CONF" "$BAK"; echo "   Backup: $BAK"
+  BLOCK=$(cat <<NGINX
 
-server {
-    listen 443 ssl;
-    listen [::]:443 ssl;
-    http2 on;
-    server_name ${DOMAIN} www.${DOMAIN};
-    ssl_certificate     /etc/nginx/ssl/live/${DOMAIN}/fullchain.pem;
-    ssl_certificate_key /etc/nginx/ssl/live/${DOMAIN}/privkey.pem;
-    if (\$host = www.${DOMAIN}) { return 301 https://${DOMAIN}\$request_uri; }
-    root /var/www/humibeam/landing;
-    index index.html;
-    charset utf-8;
-    location / { try_files \$uri \$uri/ =404; }
-}
+    # ====== HUMIBEAM.COM — HTTPS (humibeam deploy) ======
+    server {
+        listen 443 ssl;
+        http2 on;
+        server_name $DOMAIN;
+
+        ssl_certificate /etc/nginx/ssl/live/$DOMAIN/fullchain.pem;
+        ssl_certificate_key /etc/nginx/ssl/live/$DOMAIN/privkey.pem;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_ciphers HIGH:!aNULL:!MD5;
+        ssl_prefer_server_ciphers on;
+
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+        root /var/www/humibeam/landing;
+        index index.html;
+        charset utf-8;
+
+        location = /Humibeam.dmg { add_header Content-Disposition 'attachment; filename="Humibeam.dmg"'; }
+        location / { try_files \$uri \$uri/ =404; }
+    }
 NGINX
-  # HTTP-Block auf Redirect umstellen (das "root/try_files" im :80-Block durch Redirect ersetzen)
-  reload_or_rollback || die "HTTPS-vhost ungültig — Rollback erfolgt"
+)
+  LAST=$(grep -n '^}' "$CONF" | tail -1 | cut -d: -f1)
+  [ -n "$LAST" ] || { cp -a "$BAK" "$CONF"; die "konnte http{}-Ende nicht finden"; }
+  TMP=$(mktemp)
+  head -n $((LAST-1)) "$CONF" > "$TMP"
+  printf '%s\n' "$BLOCK" >> "$TMP"
+  tail -n +"$LAST" "$CONF" >> "$TMP"
+  cat "$TMP" > "$CONF"; rm -f "$TMP"
+
+  if docker exec "$NGINX_CT" nginx -t >/tmp/hb_ngt 2>&1; then
+    docker exec "$NGINX_CT" nginx -s reload && echo "   ✅ nginx neu geladen"
+  else
+    echo "‼️  nginx -t FEHLER — Rollback:"; cat /tmp/hb_ngt
+    cp -a "$BAK" "$CONF"; docker exec "$NGINX_CT" nginx -s reload 2>/dev/null || true
+    die "Server-Block ungültig — zurückgerollt, nichts kaputt"
+  fi
+else
+  echo "▶︎ 4) Block existiert schon oder kein Cert — übersprungen"
 fi
 
-# 6) Täglicher Refresh-Cron (Seite + DMG aktuell halten)
+# 5) Täglicher Refresh-Cron
 cat >/etc/cron.d/humibeam-refresh <<CRON
-17 4 * * * root curl -fsSL ${RAW}/index.html -o ${LANDING}/index.html && curl -fsSL ${DMG_URL} -o ${LANDING}/Humibeam.dmg
+17 4 * * * root curl -fsSL ${RAW}/index.html -o ${LANDING_HOST}/index.html && curl -fsSL ${DMG_URL} -o ${LANDING_HOST}/Humibeam.dmg
 CRON
 
-echo ""
-echo "✅ DEPLOY_DONE — http(s)://${DOMAIN}"
+echo ""; echo "✅ DEPLOY_DONE — https://$DOMAIN"
