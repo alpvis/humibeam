@@ -227,7 +227,8 @@ private struct SessionDetailView: View {
                 ApprovalCard(approval: approval,
                              onApprove: { tab.controller.approve() },
                              onApproveAlways: { tab.controller.approveAlways() },
-                             onDeny: { tab.controller.deny() })
+                             onDeny: { tab.controller.deny() },
+                             onShowDiff: { tab.showDiff = true })
                 Divider()
             }
             content
@@ -239,6 +240,7 @@ private struct SessionDetailView: View {
         .sheet(isPresented: $tab.showAIPanel) { AIPanel(tab: tab) }
         .sheet(isPresented: $tab.showEditor) { RemoteEditor(shell: shell, tab: tab) }
         .sheet(isPresented: $tab.showForwards) { ForwardsSheet(shell: shell, tab: tab) }
+        .sheet(isPresented: $tab.showDiff) { GitDiffSheet(tab: tab) }
     }
 
     @ViewBuilder
@@ -297,8 +299,10 @@ private struct ApprovalCard: View {
     let onApprove: () -> Void
     let onApproveAlways: () -> Void
     let onDeny: () -> Void
+    let onShowDiff: () -> Void
 
     private var accent: SwiftUI.Color { approval.looksDangerous ? .red : .orange }
+    private var canShowDiff: Bool { approval.action == .edit || approval.action == .write }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -326,6 +330,10 @@ private struct ApprovalCard: View {
             HStack(spacing: 10) {
                 Text(approval.question).font(.callout).foregroundStyle(.secondary).lineLimit(2)
                 Spacer()
+                if canShowDiff {
+                    Button { onShowDiff() } label: { Label("Echter Diff", systemImage: "plusminus.circle") }
+                        .help("Verlässlichen git-Diff vom Server holen")
+                }
                 Button("Ablehnen", role: .cancel) { onDeny() }
                     .keyboardShortcut(.cancelAction)
                 if approval.allowAlways {
@@ -377,6 +385,128 @@ private struct ApprovalCard: View {
     }
 }
 
+// MARK: - Reliable working-tree diff (Stufe 2)
+
+/// Shows the *real* working-tree changes pulled straight from the server via `git diff` over the
+/// exec-channel — independent of the TUI scrape. See docs/AGENT-COCKPIT.md.
+private struct GitDiffSheet: View {
+    @Bindable var tab: TerminalTab
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                Label("Änderungen", systemImage: "plusminus.circle").font(.headline)
+                if let dir = tab.controller.currentDirectory {
+                    Text(dir).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.head)
+                }
+                Spacer()
+                Button { load() } label: { Image(systemName: "arrow.clockwise") }
+                    .help("Neu laden").disabled(tab.diffBusy)
+                Button("Fertig") { tab.showDiff = false }.keyboardShortcut(.defaultAction)
+            }
+            .padding(12)
+            Divider()
+            content
+        }
+        .frame(width: 760, height: 540)
+        .task { if tab.diffResult == nil { load() } }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if tab.diffBusy {
+            VStack { ProgressView(); Text("Lade git diff …").font(.caption).foregroundStyle(.secondary).padding(.top, 6) }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            switch tab.diffResult {
+            case .diff(let lines, let untracked):
+                diffView(lines: lines, untracked: untracked)
+            case .clean:
+                message("checkmark.seal", "Keine Änderungen im Arbeitsverzeichnis.", .green)
+            case .notARepo:
+                message("folder", "Hier ist kein Git-Repository.", .secondary)
+            case .noLocation:
+                message("questionmark.folder",
+                        "Arbeitsverzeichnis unbekannt (Shell sendet kein OSC 7). Öffne den Diff aus dem Repo-Verzeichnis.",
+                        .orange)
+            case .error(let m):
+                message("exclamationmark.triangle", m, .red)
+            case .none:
+                EmptyView()
+            }
+        }
+    }
+
+    private func diffView(lines: [DiffHunkLine], untracked: [String]) -> some View {
+        ScrollView([.vertical, .horizontal]) {
+            VStack(alignment: .leading, spacing: 0) {
+                if !untracked.isEmpty {
+                    Text("Neue Dateien (untracked)").font(.caption).fontWeight(.semibold)
+                        .foregroundStyle(.secondary).padding(.horizontal, 10).padding(.top, 8)
+                    ForEach(untracked, id: \.self) { f in
+                        Text("＋ " + f).font(.system(.callout, design: .monospaced))
+                            .foregroundStyle(.green).padding(.horizontal, 10).padding(.vertical, 1)
+                    }
+                    Divider().padding(.vertical, 6)
+                }
+                ForEach(lines) { line in
+                    Text(line.text.isEmpty ? " " : line.text)
+                        .font(.system(.callout, design: .monospaced))
+                        .foregroundStyle(color(line.kind))
+                        .fontWeight(line.kind == .hunk || line.kind == .file ? .semibold : .regular)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 10).padding(.vertical, 0.5)
+                        .background(bg(line.kind))
+                        .textSelection(.enabled)
+                }
+            }
+            .padding(.vertical, 6)
+        }
+    }
+
+    private func message(_ symbol: String, _ text: String, _ tint: SwiftUI.Color) -> some View {
+        VStack(spacing: 10) {
+            Image(systemName: symbol).font(.largeTitle).foregroundStyle(tint)
+            Text(text).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+        }
+        .padding(40).frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func load() {
+        tab.diffBusy = true
+        let conn = tab.controller.connection
+        // Anchor candidates: the terminal's CWD (if reported) + the parent dirs of files Claude touched.
+        var candidates: [String] = []
+        if let dir = tab.controller.currentDirectory { candidates.append(dir) }
+        for p in tab.recentPaths where p.hasPrefix("/") {
+            candidates.append((p as NSString).deletingLastPathComponent)
+        }
+        Task {
+            let result = await GitDiffService.fetch(connection: conn, candidates: candidates)
+            tab.diffResult = result
+            tab.diffBusy = false
+        }
+    }
+
+    private func color(_ kind: DiffHunkLine.Kind) -> SwiftUI.Color {
+        switch kind {
+        case .add: return .green
+        case .remove: return .red
+        case .hunk: return .cyan
+        case .file: return .secondary
+        case .context: return .primary
+        }
+    }
+
+    private func bg(_ kind: DiffHunkLine.Kind) -> SwiftUI.Color {
+        switch kind {
+        case .add: return .green.opacity(0.10)
+        case .remove: return .red.opacity(0.10)
+        default: return .clear
+        }
+    }
+}
+
 // MARK: - Professional session toolbar
 
 private struct SessionToolbar: View {
@@ -424,6 +554,8 @@ private struct SessionToolbar: View {
                     .help("Suchen (⌘F)")
                 Button { uploadViaPanel() } label: { Image(systemName: "arrow.up.doc") }
                     .help("Datei hochladen").disabled(!tab.connected)
+                Button { tab.showDiff = true } label: { Image(systemName: "plusminus.circle") }
+                    .help("Änderungen ansehen (git diff)").disabled(!tab.connected)
                 Menu {
                     Button("Letzte Ausgabe erklären") { Task { await shell.explainOutput(tab) } }
                     Button("Fehler beheben") { Task { await shell.fixError(tab) } }

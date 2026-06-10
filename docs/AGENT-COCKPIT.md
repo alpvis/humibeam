@@ -56,13 +56,22 @@ neu zeichnet. Der bereinigte Stream ist deshalb keine saubere Zeilenfolge, sonde
 *best-effort* für den Diff. Erkennt er nichts Strukturiertes, fällt die Karte auf die
 generische Variante zurück (nie schlechter als heute).
 
-### Stufe 2 — Berührte Dateien & Diff aus der Quelle *(nächster Schritt)*
+### Stufe 2 — Diff aus der Quelle *(implementiert)*
 
 Humibeam hat bereits einen **Exec-Channel** parallel zum PTY (für Screenshot-Upload &
-Keepalive). Den nutzen wir, um bei einem Edit den echten Kontext zu holen:
-`git diff --stat`, `git diff <file>` oder `sed -n` für die betroffenen Zeilen — ein
-verlässlicher Diff direkt vom Server, unabhängig vom TUI-Geflacker. Die `recentPaths`
-(schon geparst) werden zur anklickbaren Datei-Leiste „in dieser Session berührt".
+Keepalive). `GitDiffService` nutzt ihn, um den **echten** Arbeitsbaum-Diff direkt vom
+Server zu holen (`git diff --no-color HEAD` + untracked Files) — unabhängig vom
+TUI-Geflacker. Gerendert als farbiges Diff-Sheet (`GitDiffSheet`), erreichbar über den
+Toolbar-Knopf „Änderungen" und den „Echter Diff"-Button auf der Edit-Approval-Karte.
+
+**CWD-Strategie (wichtig):** Stock-Ubuntu-Bash sendet meist kein OSC 7, der Terminal-CWD
+ist also oft unbekannt. Deshalb probiert das Skript eine **Kandidatenliste** durch — der
+gemeldete CWD *plus* die Elternordner der von Claude berührten Dateien (`recentPaths`) —
+und nimmt das erste Verzeichnis, das in einem Git-Repo liegt; `$HOME` als letzter Fallback.
+
+*Grenze:* zeigt den Zustand des Arbeitsbaums (was Claude bereits geschrieben hat). Eine
+*vorgeschlagene, noch nicht angewandte* Änderung lebt nur in Claudes Prompt — dafür dient
+die Inline-Karte aus Stufe 1. Beide ergänzen sich.
 
 ### Stufe 3 — Strukturierte Brücke (opt-in, 100 % exakt)
 
@@ -84,5 +93,5 @@ Das verschiebt die Wahrnehmung von „Terminal mit SSH" zu „Mission Control f�
 ## Status
 
 - [x] Stufe 1: Parser (`ClaudeApproval.swift`) + Inline-Karte (`ApprovalCard` in `MainView`).
-- [ ] Stufe 2: Diff/Datei-Kontext über Exec-Channel.
-- [ ] Stufe 3: Opt-in `PreToolUse`-Hook-Brücke.
+- [x] Stufe 2: Echter Diff über Exec-Channel (`GitDiffService.swift` + `GitDiffSheet`).
+- [ ] Stufe 3: Opt-in `PreToolUse`-Hook-Brücke (100 % exakte Tool-Calls).

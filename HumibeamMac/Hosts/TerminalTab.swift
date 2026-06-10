@@ -80,6 +80,11 @@ final class TerminalTab: Identifiable {
     // Files Claude recently touched → one-click open in the remote editor
     var recentPaths: [String] = []
 
+    // Stufe 2: reliable working-tree diff (git diff over the exec-channel)
+    var showDiff = false
+    var diffBusy = false
+    var diffResult: GitDiffResult?
+
     // AI helper
     var claudeDetected = false
     var showAIPanel = false
