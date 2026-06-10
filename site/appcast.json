@@ -1,7 +1,7 @@
 {
-  "version": "3.3",
-  "build": 33,
-  "dmgURL": "https://github.com/alpvis/humibeam/releases/download/v3.3/Humibeam.dmg",
-  "notes": "Versions-/Update-Zeile in der Seitenleiste fügt sich farblich sauber ein",
+  "version": "3.4",
+  "build": 34,
+  "dmgURL": "https://github.com/alpvis/humibeam/releases/download/v3.4/Humibeam.dmg",
+  "notes": "Sprach-Diktat funktioniert wieder überall (global), nicht nur im Terminal",
   "minOS": "13.0"
 }
