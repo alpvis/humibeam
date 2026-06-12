@@ -37,6 +37,7 @@ targets:
     platform: macOS
     sources:
       - path: App
+      - path: Beam
       - path: Features
       - path: Services
       - path: Views

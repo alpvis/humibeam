@@ -122,7 +122,8 @@ struct PairPhoneView: View {
             keyInstalled = true
             payload = MacPairingPayload(host: Self.bonjourHostname(),
                                         user: NSUserName(),
-                                        key: Self.pairKey.rawRepresentation.base64EncodedString())
+                                        key: Self.pairKey.rawRepresentation.base64EncodedString(),
+                                        beam: SSHKeyManager.ensureBeamSecret().base64EncodedString())
         } catch {
             self.error = "authorized_keys konnte nicht geschrieben werden: \(error.localizedDescription)"
         }

@@ -72,12 +72,15 @@
       iOS-Info.plist auf xcodegen info:-Block migriert (App-Info.plist generiert)
 - [x] **P6** Fleet-Übersicht iOS (FleetSheet: Vitalwerte, Sitzungen, Claude-Status, Freigaben)
 
-### Welle 6 — MacBeam Remote Desktop  ☐
-- [ ] **P3** Mac: ScreenCaptureKit → VideoToolbox H.264 → TCP (Bonjour `_macbeam._tcp`) ·
-      iOS: Decode + AVSampleBufferDisplayLayer, Touch→Maus, Tastatur, Scroll, Pinch-Zoom ·
-      Eingabe am Mac via CGEvent (braucht Bedienungshilfen + Bildschirmaufnahme — Ali erteilt einmalig) ·
-      unterwegs: Tunnel-Dienst auf alpvis.com (`server/beam-tunnel/`, Token-Auth, E2E via Noise/AES)
-      — pragmatisch: Wiederverwendung des SSH-Port-Forwards über einen beliebigen SSH-Host
+### Welle 6 — MacBeam Remote Desktop  ✅ (Code fertig; echtes Video/Input braucht physische Geräte + Berechtigungen — Alis Test)
+- [x] **P3** Geteilt: BeamProtocol.swift (AES-GCM-Pakete, HKDF aus Pairing-beamSecret, Kanal-ID)
+      · Mac: MacBeamServer (ScreenCaptureKit 20fps ≤1728px → VTCompression H.264 → TCP :8765
+      + Bonjour, CGEvent-Injektion Maus/Tastatur/Scroll/Drag; Toggle in Einstellungen → Konto)
+      · iOS: BeamClient (direkt → 4s-Fallback Tunnel) + BeamScreen (AVSampleBufferDisplayLayer,
+      Gesten: Tap/Doppeltipp/LongPress-Drag/2-Finger-Scroll/Rechtsklick, Tastatur + ⌘-Leiste;
+      Einstieg: Swipe/Kontextmenü auf gekoppelten Hosts)
+      · Tunnel: server/beam-tunnel (Rendezvous, nur Chiffrat; lokal e2e-getestet) + install.sh
+      · beamSecret steckt im Pairing-QR (MacPairingPayload.beam) — alte Kopplungen neu scannen
 
 ### Welle 7 — Mac-Härtung  ☐
 - [ ] **P22** known_hosts Key-Pinning (Host-Key-Bytes aus nio-ssh ziehen, pinnen, Mismatch-Warnung)

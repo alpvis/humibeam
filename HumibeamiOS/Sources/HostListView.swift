@@ -10,6 +10,7 @@ struct HostListView: View {
     @State private var showsArchive = false
     @State private var showsFleet = false
     @State private var showsPairing = false
+    @State private var beamHost: SSHHost?
     @State private var path: [UUID] = []
 
     var body: some View {
@@ -57,6 +58,21 @@ struct HostListView: View {
                                     editingHost = host
                                 } label: { Label("Bearbeiten", systemImage: "pencil") }
                                 .tint(.indigo)
+                            }
+                            .swipeActions(edge: .leading) {
+                                if host.authKind == .pairedKey {
+                                    Button {
+                                        beamHost = host
+                                    } label: { Label("MacBeam", systemImage: "display") }
+                                    .tint(.cyan)
+                                }
+                            }
+                            .contextMenu {
+                                if host.authKind == .pairedKey {
+                                    Button {
+                                        beamHost = host
+                                    } label: { Label("Mac-Bildschirm (MacBeam)", systemImage: "display") }
+                                }
                             }
                         }
 
@@ -131,6 +147,9 @@ struct HostListView: View {
             }
             .sheet(isPresented: $showsPairing) {
                 PairScanSheet()
+            }
+            .fullScreenCover(item: $beamHost) { host in
+                BeamScreen(host: host)
             }
             .onContinueUserActivity("app.humibeam.session") { activity in
                 // Handoff vom Mac: gleiche Sitzung (tmux) auf dem iPhone weiterführen.

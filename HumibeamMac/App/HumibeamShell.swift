@@ -15,6 +15,7 @@ final class HumibeamShell {
     let cloudSync = CloudSyncService()
     let accountSync = AccountSyncService()
     let network = NetworkMonitor()
+    let beam = MacBeamServer()
 
     var tabs: [TerminalTab] = []
     var selectedTabID: UUID? { didSet { publishHandoff() } }
@@ -90,6 +91,7 @@ final class HumibeamShell {
             if let t = payload.themeID { selectedThemeID = t }
         }
         accountSync.start()
+        if UserDefaults.standard.bool(forKey: "beam.enabled") { beam.start() }
     }
 
     // MARK: - Server-Gesundheit (Sidebar-Vitalwerte)

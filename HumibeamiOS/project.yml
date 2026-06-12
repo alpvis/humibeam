@@ -43,6 +43,7 @@ targets:
       - path: ../HumibeamMac/Terminal/ClaudeActivity.swift
       - path: ../HumibeamMac/Services/LLMCore.swift
       - path: ../HumibeamMac/Services/MacPairing.swift
+      - path: ../HumibeamMac/Beam/BeamProtocol.swift
       - path: ../HumibeamMac/Hosts/HostStore.swift
       - path: ../HumibeamMac/Hosts/SnippetStore.swift
       - path: ../HumibeamMac/Hosts/BookmarkStore.swift

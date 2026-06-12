@@ -13,6 +13,8 @@ struct MacPairingPayload: Codable {
     var key: String
     /// tmux direkt aktivieren (Sitzungen überleben App-Wechsel auf dem iPhone).
     var tmux: Bool = true
+    /// Base64 des MacBeam-Geheimnisses (32 Bytes) — E2E-Schlüssel fürs Bildschirm-Streaming.
+    var beam: String?
 
     var qrString: String {
         guard let data = try? JSONEncoder().encode(self) else { return "" }

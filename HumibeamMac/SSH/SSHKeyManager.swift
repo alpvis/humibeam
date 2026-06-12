@@ -60,6 +60,21 @@ enum SSHKeyManager {
         loadSecret(account: "paired-\(hostID)")
     }
 
+    // MARK: - MacBeam-Geheimnis (E2E-Schlüssel fürs Bildschirm-Streaming)
+    // Mac: ein globales Secret (er ist der Server). iOS: pro gekoppeltem Host gespeichert.
+
+    static func ensureBeamSecret() -> Data {
+        if let existing = loadSecret(account: "beam-secret") { return existing }
+        var bytes = [UInt8](repeating: 0, count: 32)
+        _ = SecRandomCopyBytes(kSecRandomDefault, 32, &bytes)
+        let data = Data(bytes)
+        saveSecret(data, account: "beam-secret")
+        return data
+    }
+    static func loadBeamSecret() -> Data? { loadSecret(account: "beam-secret") }
+    static func saveBeamSecret(_ raw: Data, hostID: String) { saveSecret(raw, account: "beam-\(hostID)") }
+    static func loadBeamSecret(hostID: String) -> Data? { loadSecret(account: "beam-\(hostID)") }
+
     // MARK: - Import existing OpenSSH private key
 
     enum ImportError: LocalizedError {

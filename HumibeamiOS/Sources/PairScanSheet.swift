@@ -78,6 +78,9 @@ struct PairScanSheet: View {
         host.authKind = .pairedKey
         host.useTmux = payload.tmux
         SSHKeyManager.savePairedKey(raw, hostID: host.id.uuidString)
+        if let beam = payload.beam, let beamRaw = Data(base64Encoded: beam), beamRaw.count == 32 {
+            SSHKeyManager.saveBeamSecret(beamRaw, hostID: host.id.uuidString)
+        }
         model.hostStore.add(host)
         done = host
         UINotificationFeedbackGenerator().notificationOccurred(.success)

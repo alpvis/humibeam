@@ -4,10 +4,12 @@ import SwiftUI
 /// Geräte-Sync steuern (Profile, Snippets, Lesezeichen, Darstellung — Secrets nie).
 struct AccountSettingsView: View {
     @Bindable var account: AccountSyncService
+    var beam: MacBeamServer? = nil
 
     @State private var email = ""
     @State private var password = ""
     @State private var showsPairing = false
+    @AppStorage("beam.enabled") private var beamEnabled = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -37,6 +39,24 @@ struct AccountSettingsView: View {
                 Text("Steuere diesen Mac vom iPhone aus — QR scannen, fertig.")
                     .font(.system(size: 10.5)).foregroundStyle(.tertiary)
                 Button("iPhone koppeln…") { showsPairing = true }
+
+                if let beam {
+                    Toggle("MacBeam: Bildschirm vom iPhone steuern", isOn: $beamEnabled)
+                        .font(.system(size: 11.5))
+                        .onChange(of: beamEnabled) { _, on in
+                            on ? beam.start() : beam.stop()
+                        }
+                    if beamEnabled {
+                        Text(beam.lastError
+                             ?? (beam.clientConnected ? "iPhone verbunden — Streaming läuft."
+                                                      : "Wartet auf das iPhone (gleiches WLAN, Profil gekoppelt)."))
+                            .font(.system(size: 10))
+                            .foregroundStyle(beam.lastError == nil ? Color.secondary : Color.red)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text("Braucht einmalig: Bildschirmaufnahme + Bedienungshilfen (Systemeinstellungen → Datenschutz).")
+                            .font(.system(size: 9.5)).foregroundStyle(.tertiary)
+                    }
+                }
             }
             .sheet(isPresented: $showsPairing) { PairPhoneView() }
 

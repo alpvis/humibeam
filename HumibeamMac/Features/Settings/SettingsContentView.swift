@@ -29,7 +29,7 @@ struct SettingsContentView: View {
                 case 4: UsageSettingsView(appState: appState)
                 case 5:
                     if let shell {
-                        AccountSettingsView(account: shell.accountSync)
+                        AccountSettingsView(account: shell.accountSync, beam: shell.beam)
                     } else {
                         UpdateSettingsView(appState: appState)
                     }
