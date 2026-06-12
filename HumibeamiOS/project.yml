@@ -3,6 +3,7 @@ options:
   bundleIdPrefix: app.humibeam
   deploymentTarget:
     iOS: "17.0"
+    watchOS: "10.0"
   xcodeVersion: "16.0"
 
 settings:
@@ -32,6 +33,7 @@ targets:
     platform: iOS
     sources:
       - path: Sources
+      - path: Shared
       # Geteilter, plattformneutraler Kern aus der Mac-App:
       - path: ../HumibeamMac/SSH
       - path: ../HumibeamMac/Terminal/ClaudeApproval.swift
@@ -40,6 +42,7 @@ targets:
       - path: ../HumibeamMac/Terminal/CommandHistoryStore.swift
       - path: ../HumibeamMac/Terminal/ClaudeActivity.swift
       - path: ../HumibeamMac/Services/LLMCore.swift
+      - path: ../HumibeamMac/Services/MacPairing.swift
       - path: ../HumibeamMac/Hosts/HostStore.swift
       - path: ../HumibeamMac/Hosts/SnippetStore.swift
       - path: ../HumibeamMac/Hosts/BookmarkStore.swift
@@ -50,21 +53,26 @@ targets:
       - path: ../HumibeamMac/Services/NetworkMonitor.swift
       - path: Resources
         buildPhase: resources
+    info:
+      path: App-Info.plist
+      properties:
+        CFBundleDisplayName: Humibeam
+        UILaunchScreen: {}
+        NSLocalNetworkUsageDescription: "Humibeam verbindet sich per SSH mit Servern, auch in deinem lokalen Netzwerk."
+        NSPhotoLibraryUsageDescription: "Bilder aus der Fotobibliothek können in die Remote-Session hochgeladen werden."
+        NSMicrophoneUsageDescription: "Sprach-Diktat: Aufnahmen werden transkribiert und als Text ins Terminal getippt."
+        NSSpeechRecognitionUsageDescription: "Lokales Sprach-Diktat: Apple-Spracherkennung wandelt deine Aufnahme auf dem Gerät in Text um."
+        NSFaceIDUsageDescription: "Schützt den Zugriff auf deine Server-Verbindungen."
+        NSCameraUsageDescription: "Zum Koppeln mit deinem Mac wird dessen QR-Code gescannt."
+        NSSupportsLiveActivities: true
+        NSUserActivityTypes: [app.humibeam.session]
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.humibeam.ios
         PRODUCT_NAME: Humibeam
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        INFOPLIST_KEY_CFBundleDisplayName: Humibeam
-        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "Humibeam verbindet sich per SSH mit Servern, auch in deinem lokalen Netzwerk."
-        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Bilder aus der Fotobibliothek können in die Remote-Session hochgeladen werden."
-        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Sprach-Diktat: Aufnahmen werden transkribiert und als Text ins Terminal getippt."
-        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "Lokales Sprach-Diktat: Apple-Spracherkennung wandelt deine Aufnahme auf dem Gerät in Text um."
-        INFOPLIST_KEY_NSFaceIDUsageDescription: "Schützt den Zugriff auf deine Server-Verbindungen."
-        INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
-        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         TARGETED_DEVICE_FAMILY: "1,2"
         DEVELOPMENT_TEAM: DC289RNL2G
         CODE_SIGN_ENTITLEMENTS: Humibeam.entitlements
@@ -79,3 +87,40 @@ targets:
         product: NIOPosix
       - package: swift-crypto
         product: Crypto
+      - target: HumibeamWidgets
+      - target: HumibeamWatch
+
+  # Apple-Watch-App: Freigaben beantworten + Server-Ampel (WatchConnectivity).
+  HumibeamWatch:
+    type: application
+    platform: watchOS
+    sources:
+      - path: Watch
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.humibeam.ios.watchkitapp
+        PRODUCT_NAME: HumibeamWatch
+        DEVELOPMENT_TEAM: DC289RNL2G
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_WKApplication: YES
+        INFOPLIST_KEY_WKCompanionAppBundleIdentifier: app.humibeam.ios
+        INFOPLIST_KEY_CFBundleDisplayName: Humibeam
+
+  # Widget + Live Activity (Dynamic Island): liest den StatusSnapshot aus der App-Group.
+  HumibeamWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Widgets
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.humibeam.ios.widgets
+        PRODUCT_NAME: HumibeamWidgets
+        DEVELOPMENT_TEAM: DC289RNL2G
+        CODE_SIGN_ENTITLEMENTS: Widgets/HumibeamWidgets.entitlements
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Widgets/Info.plist
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) WIDGET_EXTENSION"
+        SKIP_INSTALL: YES

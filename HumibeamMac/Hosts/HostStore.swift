@@ -5,6 +5,7 @@ enum AuthKind: String, Codable, CaseIterable, Identifiable {
     case managedKey   // humibeam-managed ed25519 key (paste public key to server once)
     case password
     case importedKey  // user's existing OpenSSH private key file
+    case pairedKey    // per QR vom Mac übernommener ed25519-Key („Mein Mac als Server")
 
     var id: String { rawValue }
     var label: String {
@@ -12,6 +13,7 @@ enum AuthKind: String, Codable, CaseIterable, Identifiable {
         case .managedKey: return "humibeam-Schlüssel"
         case .password: return "Passwort"
         case .importedKey: return "Eigener SSH-Key"
+        case .pairedKey: return "Gekoppelter Schlüssel (QR)"
         }
     }
 }
@@ -95,6 +97,11 @@ final class HostStore {
             guard let path = host.importedKeyPath else { throw SSHKeyManager.ImportError.malformed }
             let pem = try String(contentsOfFile: path, encoding: .utf8)
             auth = .privateKey(try SSHKeyManager.importPrivateKey(pem: pem))
+        case .pairedKey:
+            guard let raw = SSHKeyManager.loadPairedKey(hostID: host.id.uuidString) else {
+                throw SSHKeyManager.ImportError.malformed
+            }
+            auth = .ed25519Raw(raw)
         }
         return SSHCredentials(host: host.host, port: host.port, username: host.username, auth: auth)
     }

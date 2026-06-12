@@ -25,6 +25,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     let shell = HumibeamShell()
     private lazy var sessions = SessionManager(shell: shell, updater: appState.updater)
 
+    /// Handoff vom iPhone: Sitzung hier am Mac weiterführen.
+    func application(_ application: NSApplication, continue userActivity: NSUserActivity,
+                     restorationHandler: @escaping ([any NSUserActivityRestoring]) -> Void) -> Bool {
+        guard userActivity.activityType == "app.humibeam.session" else { return false }
+        shell.continueSession(hostID: userActivity.userInfo?["hostID"] as? String,
+                              hostName: userActivity.userInfo?["hostName"] as? String)
+        NSApp.activate(ignoringOtherApps: true)
+        return true
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 
@@ -298,9 +308,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let request = UNNotificationRequest(identifier: id.uuidString + "-" + title,
                                             content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
-        // Zusätzlich aufs iPhone, falls das Push-Relay konfiguriert ist.
+        // Zusätzlich aufs iPhone, falls das Push-Relay konfiguriert ist — Freigaben mit
+        // Aktions-Buttons (kind/sessionID), Antwort holt der Mac per /actions-Poll ab.
         PushRelayClient.notify(title: title, body: body,
-                               host: shell.tabs.first { $0.id == id }?.host.displayName ?? "")
+                               host: shell.tabs.first { $0.id == id }?.host.displayName ?? "",
+                               kind: info["kind"] as? String ?? "",
+                               sessionID: id.uuidString)
     }
 
     // MARK: - Freigabe direkt aus der Benachrichtigung (Erlauben / Immer / Ablehnen)

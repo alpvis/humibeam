@@ -17,7 +17,38 @@ final class HumibeamShell {
     let network = NetworkMonitor()
 
     var tabs: [TerminalTab] = []
-    var selectedTabID: UUID?
+    var selectedTabID: UUID? { didSet { publishHandoff() } }
+
+    // MARK: - Handoff (Mac ↔ iPhone): aktive Sitzung auf dem anderen Gerät weiterführen.
+    // Mit tmux-Profilen landet man in derselben Terminal-Sitzung.
+
+    @ObservationIgnored private var handoffActivity: NSUserActivity?
+
+    private func publishHandoff() {
+        guard let tab = selectedTab else {
+            handoffActivity?.invalidate()
+            handoffActivity = nil
+            return
+        }
+        let activity = NSUserActivity(activityType: "app.humibeam.session")
+        activity.title = "Terminal: \(tab.host.displayName)"
+        activity.userInfo = ["hostID": tab.host.id.uuidString, "hostName": tab.host.displayName]
+        activity.isEligibleForHandoff = true
+        activity.becomeCurrent()
+        handoffActivity = activity
+    }
+
+    /// Handoff vom iPhone empfangen: Sitzung zum Host öffnen bzw. fokussieren.
+    func continueSession(hostID: String?, hostName: String?) {
+        let host = hostID.flatMap { id in hostStore.hosts.first { $0.id.uuidString == id } }
+            ?? hostStore.hosts.first { $0.displayName == hostName }
+        guard let host else { return }
+        if let existing = tabs.first(where: { $0.host.id == host.id }) {
+            selectedTabID = existing.id
+        } else {
+            connect(to: host)
+        }
+    }
 
     init() {
         let d = UserDefaults.standard
@@ -284,6 +315,37 @@ final class HumibeamShell {
     private func updateDockBadge() {
         let waiting = tabs.filter { $0.awaitingApproval }.count
         NSApp.dockTile.badgeLabel = waiting > 0 ? "\(waiting)" : nil
+        setActionPolling(waiting > 0)
+    }
+
+    // MARK: - Rückkanal vom iPhone (Freigabe aus der Push-Mitteilung beantwortet)
+
+    @ObservationIgnored private var actionPoll: Timer?
+
+    /// Solange Freigaben offen sind, alle 3 s beim Relay nachsehen, ob das iPhone geantwortet hat.
+    private func setActionPolling(_ on: Bool) {
+        if on, actionPoll == nil, PushRelayClient.enabled {
+            actionPoll = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
+                Task { @MainActor in await self?.applyRemoteActions() }
+            }
+        } else if !on {
+            actionPoll?.invalidate()
+            actionPoll = nil
+        }
+    }
+
+    private func applyRemoteActions() async {
+        let actions = await PushRelayClient.fetchActions()
+        for a in actions {
+            guard let id = UUID(uuidString: a.sessionID),
+                  let tab = tabs.first(where: { $0.id == id }), tab.awaitingApproval else { continue }
+            switch a.action {
+            case "approve": tab.controller.approve()
+            case "approve_always": tab.controller.approveAlways()
+            case "deny": tab.controller.deny()
+            default: break
+            }
+        }
     }
 
     func closeSelectedTab() {

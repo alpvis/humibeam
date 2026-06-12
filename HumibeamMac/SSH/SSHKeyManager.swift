@@ -49,6 +49,17 @@ enum SSHKeyManager {
         loadSecret(account: "pw-\(hostID)").flatMap { String(data: $0, encoding: .utf8) }
     }
 
+    // MARK: - Gekoppelte Schlüssel (QR-Pairing „Mein Mac als Server")
+    // Der Mac erzeugt das Schlüsselpaar, trägt den Public Key selbst in seine
+    // authorized_keys ein und reicht den Private Key per QR an das iPhone weiter.
+
+    static func savePairedKey(_ raw: Data, hostID: String) {
+        saveSecret(raw, account: "paired-\(hostID)")
+    }
+    static func loadPairedKey(hostID: String) -> Data? {
+        loadSecret(account: "paired-\(hostID)")
+    }
+
     // MARK: - Import existing OpenSSH private key
 
     enum ImportError: LocalizedError {

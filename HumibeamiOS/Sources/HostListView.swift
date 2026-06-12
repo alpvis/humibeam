@@ -8,6 +8,8 @@ struct HostListView: View {
     @State private var showsNewHost = false
     @State private var showsSettings = false
     @State private var showsArchive = false
+    @State private var showsFleet = false
+    @State private var showsPairing = false
     @State private var path: [UUID] = []
 
     var body: some View {
@@ -100,9 +102,16 @@ struct HostListView: View {
                     Button { showsSettings = true } label: { Image(systemName: "gearshape") }
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button { showsFleet = true } label: { Image(systemName: "square.grid.2x2") }
                     Button { showsArchive = true } label: { Image(systemName: "doc.text.magnifyingglass") }
-                    Button { showsNewHost = true } label: { Image(systemName: "plus") }
-                        .keyboardShortcut("n", modifiers: .command)
+                    Menu {
+                        Button { showsNewHost = true } label: {
+                            Label("Server hinzufügen", systemImage: "server.rack")
+                        }
+                        Button { showsPairing = true } label: {
+                            Label("Mac koppeln (QR)", systemImage: "qrcode.viewfinder")
+                        }
+                    } label: { Image(systemName: "plus") }
                 }
             }
             .sheet(isPresented: $showsNewHost) {
@@ -116,6 +125,29 @@ struct HostListView: View {
             }
             .sheet(isPresented: $showsArchive) {
                 TranscriptArchiveSheet()
+            }
+            .sheet(isPresented: $showsFleet) {
+                FleetSheet()
+            }
+            .sheet(isPresented: $showsPairing) {
+                PairScanSheet()
+            }
+            .onContinueUserActivity("app.humibeam.session") { activity in
+                // Handoff vom Mac: gleiche Sitzung (tmux) auf dem iPhone weiterführen.
+                guard let info = activity.userInfo else { return }
+                let host: SSHHost?
+                if let idStr = info["hostID"] as? String, let id = UUID(uuidString: idStr) {
+                    host = model.hostStore.hosts.first { $0.id == id }
+                        ?? model.hostStore.hosts.first { $0.displayName == (info["hostName"] as? String ?? "") }
+                } else {
+                    host = model.hostStore.hosts.first { $0.displayName == (info["hostName"] as? String ?? "") }
+                }
+                guard let host else { return }
+                let session = model.primarySession(for: host)
+                if !session.controller.isConnected && session.controller.connection == nil {
+                    model.connect(session)
+                }
+                path = [session.id]
             }
             .onChange(of: model.requestedSessionID) { _, requested in
                 if let requested {

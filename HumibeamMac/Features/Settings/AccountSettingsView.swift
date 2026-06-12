@@ -7,6 +7,7 @@ struct AccountSettingsView: View {
 
     @State private var email = ""
     @State private var password = ""
+    @State private var showsPairing = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -27,6 +28,17 @@ struct AccountSettingsView: View {
                     .foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)
             }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Mein Mac als Server")
+                    .font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                Text("Steuere diesen Mac vom iPhone aus — QR scannen, fertig.")
+                    .font(.system(size: 10.5)).foregroundStyle(.tertiary)
+                Button("iPhone koppeln…") { showsPairing = true }
+            }
+            .sheet(isPresented: $showsPairing) { PairPhoneView() }
 
             Divider()
 

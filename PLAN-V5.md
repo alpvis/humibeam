@@ -51,18 +51,26 @@
 - [x] **P20** Claude-Status Plus: ClaudeActivity.swift (geteilt) parst „liest X / bearbeitet Y /
       führt aus: Z / wartet" — iOS-Statuszeile + Sitzungsliste
 
-### Welle 4 — Push & Glanz  ☐
-- [ ] **P7** Actionable Push: Erlauben/Immer/Ablehnen aus der iOS-Mitteilung; Rückkanal über
-      Push-Relay → Mac (Relay um /actions-Polling o. WebSocket erweitern)
-- [ ] **P8** Apple-Watch-App (Approvals + Server-Ampel; WatchConnectivity)
-- [ ] **P9** Widgets + Live Activity (Agent-Status, Dynamic Island; WidgetKit-Extension)
-- [ ] **P10** App Intents/Siri: Snippet auf Server ausführen, Server-Status
+### Welle 4 — Push & Glanz  ✅
+- [x] **P7** Actionable Push: Relay sendet category HUMIBEAM_APPROVAL + sessionID,
+      iOS beantwortet aus der Mitteilung (POST /action), Mac pollt /actions alle 3 s solange
+      Freigaben offen sind und drückt 1/2/Esc — e2e-getestet (Relay lokal)
+- [x] **P8** Watch-App: HumibeamWatch-Target (Freigaben beantworten + Server-Ampel),
+      PhoneWatchBridge (WCSession, ApplicationContext hin / sendMessage zurück)
+- [x] **P9** Widget (ServerStatusWidget, App-Group group.app.humibeam, StatusSnapshot) +
+      Live Activity (ClaudeLiveActivity, Dynamic Island; App-getriebene Updates via 5-s-Abgleich)
+- [x] **P10** App Intents: RunSnippetIntent + ServerStatusIntent + AppShortcuts (Siri)
 
-### Welle 5 — Symbiose Mac ↔ iOS  ☐
-- [ ] **P2** „Mein Mac als Server": Mac-App zeigt QR (Host/Port/User + Public Key →
-      authorized_keys lokal eintragen, Remote-Login-Anleitung), iOS scannt → Profil fertig
-- [ ] **P4** Session-Handoff: tmux-Sessions als Handoff-Activity (NSUserActivity) Mac↔iOS
-- [ ] **P6** Fleet-Übersicht iOS (Server + Agenten + Freigaben, wie Mac ⌘⇧F)
+### Welle 5 — Symbiose Mac ↔ iOS  ✅
+- [x] **P2** QR-Pairing: Mac (Einstellungen → Konto → „iPhone koppeln") erzeugt ed25519-Paar,
+      trägt Public Key selbst in ~/.ssh/authorized_keys ein, prüft Port 22, zeigt QR
+      (MacPairingPayload, geteilt); iOS scannt (PairScanSheet, AVFoundation) → Profil mit
+      AuthKind.pairedKey + tmux fertig. ACHTUNG: neuer AuthKind-Fall — alte App-Versionen
+      können gesyncte hosts.json damit nicht lesen → beide Apps zusammen releasen.
+- [x] **P4** Handoff: NSUserActivity app.humibeam.session in beide Richtungen
+      (Mac publiziert bei Tab-Wechsel, AppDelegate empfängt; iOS .userActivity/.onContinue);
+      iOS-Info.plist auf xcodegen info:-Block migriert (App-Info.plist generiert)
+- [x] **P6** Fleet-Übersicht iOS (FleetSheet: Vitalwerte, Sitzungen, Claude-Status, Freigaben)
 
 ### Welle 6 — MacBeam Remote Desktop  ☐
 - [ ] **P3** Mac: ScreenCaptureKit → VideoToolbox H.264 → TCP (Bonjour `_macbeam._tcp`) ·

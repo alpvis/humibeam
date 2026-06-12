@@ -20,14 +20,52 @@ struct HumibeamApp: App {
 // Funktioniert erst mit Push-fähigem Provisioning (aps-environment); ohne läuft
 // die App unverändert weiter — Registrierung schlägt dann einfach still fehl.
 
-final class PushDelegate: NSObject, UIApplicationDelegate {
+final class PushDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+        let center = UNUserNotificationCenter.current()
+        center.delegate = self
+        // Freigabe-Pushes mit Aktions-Buttons — beantwortet die Frage, ohne die App zu öffnen.
+        let approve = UNNotificationAction(identifier: "APPROVE", title: "Erlauben", options: [])
+        let always = UNNotificationAction(identifier: "APPROVE_ALWAYS", title: "Immer erlauben", options: [])
+        let deny = UNNotificationAction(identifier: "DENY", title: "Ablehnen", options: [.destructive])
+        center.setNotificationCategories([
+            UNNotificationCategory(identifier: "HUMIBEAM_APPROVAL",
+                                   actions: [approve, always, deny],
+                                   intentIdentifiers: []),
+        ])
+        center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
             guard granted else { return }
             DispatchQueue.main.async { application.registerForRemoteNotifications() }
         }
         return true
+    }
+
+    /// Aktion aus der Mitteilung → ans Relay; der Mac holt sie per Poll ab und drückt 1/2/Esc.
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                didReceive response: UNNotificationResponse,
+                                withCompletionHandler completionHandler: @escaping () -> Void) {
+        let info = response.notification.request.content.userInfo
+        let sessionID = info["sessionID"] as? String ?? ""
+        let action: String? = switch response.actionIdentifier {
+        case "APPROVE": "approve"
+        case "APPROVE_ALWAYS": "approve_always"
+        case "DENY": "deny"
+        default: nil
+        }
+        if let action, !sessionID.isEmpty {
+            PushRegistration.sendAction(sessionID: sessionID, action: action) {
+                completionHandler()
+            }
+        } else {
+            completionHandler()
+        }
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                willPresent notification: UNNotification,
+                                withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .sound])
     }
 
     func application(_ application: UIApplication,
@@ -63,6 +101,21 @@ enum PushRegistration {
         ])
         URLSession.shared.dataTask(with: request).resume()
     }
+
+    /// Antwort auf einen Freigabe-Push (approve/approve_always/deny) ans Relay melden.
+    static func sendAction(sessionID: String, action: String, done: @escaping () -> Void) {
+        guard !secret.isEmpty,
+              let url = URL(string: baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/action") else {
+            done(); return
+        }
+        var request = URLRequest(url: url, timeoutInterval: 10)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "secret": secret, "sessionID": sessionID, "action": action,
+        ])
+        URLSession.shared.dataTask(with: request) { _, _, _ in done() }.resume()
+    }
 }
 
 /// Eine lebende Terminal-Sitzung (Multi-Session: mehrere pro Host möglich, iTerm-artig).
@@ -86,6 +139,9 @@ final class TerminalSession: Identifiable {
 @Observable
 @MainActor
 final class AppModel {
+    /// Für App Intents (Siri/Kurzbefehle) — die App läuft, wenn der Intent sie öffnet.
+    static weak var shared: AppModel?
+
     let hostStore = HostStore()
     let knownHosts = KnownHostsStore()
     let network = NetworkMonitor()
@@ -143,8 +199,12 @@ final class AppModel {
     }
 
     @ObservationIgnored private var healthTimer: Timer?
+    @ObservationIgnored private var activityTimer: Timer?
+    @ObservationIgnored private let liveActivities = LiveActivityManager()
 
     init() {
+        defer { AppModel.shared = self }
+        PhoneWatchBridge.shared.activate()
         themeID = UserDefaults.standard.string(forKey: "themeID") ?? "beam"
         fontSize = UserDefaults.standard.object(forKey: "fontSize") as? Double ?? 13
         fontName = UserDefaults.standard.string(forKey: "fontName") ?? ""
@@ -183,6 +243,14 @@ final class AppModel {
 
         healthTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.pollHealth() }
+        }
+        // Live Activity + Widget-Snapshot im 5-s-Takt mit dem Sitzungszustand abgleichen.
+        activityTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.liveActivities.reconcile(sessions: self.sessions)
+                self.publishSnapshot()
+            }
         }
     }
 
@@ -290,7 +358,31 @@ final class AppModel {
                       let text = String(data: out, encoding: .utf8),
                       let parsed = ServerStats.parse(text) else { return }
                 self?.stats[hostID] = parsed
+                self?.publishSnapshot()
             }
         }
+        publishSnapshot()
+    }
+
+    // MARK: - Status-Snapshot (Widget, Siri, Watch)
+
+    /// Kompakter Zustand für Widget/Intents: Server-Vitalwerte + wartende Freigaben.
+    func publishSnapshot() {
+        var servers: [StatusSnapshot.Server] = []
+        for host in hostStore.hosts {
+            let s = stats[host.id]
+            servers.append(StatusSnapshot.Server(
+                name: host.displayName,
+                connected: activeSessions.contains(host.id),
+                load: s?.load1, mem: s?.memUsedPercent, disk: s?.diskPercent,
+                critical: s?.isCritical ?? false))
+        }
+        let waiting = sessions.filter { $0.controller.approval != nil }.map {
+            StatusSnapshot.Waiting(sessionID: $0.id.uuidString, title: $0.title,
+                                   question: $0.controller.approval?.question ?? "")
+        }
+        let snapshot = StatusSnapshot(servers: servers, waiting: waiting, date: Date())
+        snapshot.save()
+        PhoneWatchBridge.shared.push(snapshot)
     }
 }

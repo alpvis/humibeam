@@ -27,12 +27,18 @@ struct HostEditorView: View {
                 }
 
                 Section("Authentifizierung") {
+                    // pairedKey entsteht nur über das QR-Pairing, nicht manuell.
                     Picker("Methode", selection: $host.authKind) {
-                        ForEach(AuthKind.allCases) { Text($0.label).tag($0) }
+                        ForEach(AuthKind.allCases.filter { $0 != .pairedKey || host.authKind == .pairedKey }) {
+                            Text($0.label).tag($0)
+                        }
                     }
                     .pickerStyle(.segmented)
 
                     switch host.authKind {
+                    case .pairedKey:
+                        Text("Der Schlüssel wurde beim Koppeln per QR übernommen und liegt im Geräte-Keychain.")
+                            .font(.caption).foregroundStyle(.secondary)
                     case .password:
                         SecureField("Passwort", text: $password)
                     case .managedKey:

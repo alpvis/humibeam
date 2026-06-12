@@ -175,6 +175,13 @@ struct TerminalScreen: View {
             }
             _ = controller.terminalView.becomeFirstResponder()
         }
+        // Handoff zum Mac: dieselbe Sitzung (tmux) dort weiterführen.
+        .userActivity("app.humibeam.session") { activity in
+            activity.title = "Terminal: \(session.host.displayName)"
+            activity.userInfo = ["hostID": session.host.id.uuidString,
+                                 "hostName": session.host.displayName]
+            activity.isEligibleForHandoff = true
+        }
     }
 
     /// Leiste mit allen lebenden Sitzungen (alle Hosts) — Tap wechselt.

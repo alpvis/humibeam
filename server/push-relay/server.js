@@ -26,6 +26,9 @@ const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
 let tokens = {};
 try { tokens = JSON.parse(fs.readFileSync(TOKENS_PATH, 'utf8')); } catch { tokens = {}; }
 
+// Vom iPhone beantwortete Freigaben, bis der Mac sie abholt (in-memory reicht).
+let pendingActions = [];
+
 function saveTokens() {
   fs.writeFileSync(TOKENS_PATH, JSON.stringify(tokens, null, 2));
 }
@@ -53,7 +56,7 @@ function apnsHost() {
   return config.production ? 'https://api.push.apple.com' : 'https://api.sandbox.push.apple.com';
 }
 
-function sendPush(token, title, body, hostLabel) {
+function sendPush(token, title, body, hostLabel, kind, sessionID) {
   return new Promise((resolve) => {
     let client;
     try {
@@ -61,13 +64,18 @@ function sendPush(token, title, body, hostLabel) {
     } catch (e) { return resolve({ token, ok: false, reason: String(e) }); }
     client.on('error', (e) => resolve({ token, ok: false, reason: String(e) }));
 
+    const aps = {
+      alert: { title, body },
+      sound: 'default',
+      'interruption-level': 'time-sensitive',
+    };
+    // Freigabe-Pushes bekommen Aktions-Buttons (Erlauben/Immer/Ablehnen) auf dem iPhone.
+    if (kind === 'approval') aps.category = 'HUMIBEAM_APPROVAL';
     const payload = JSON.stringify({
-      aps: {
-        alert: { title, body },
-        sound: 'default',
-        'interruption-level': 'time-sensitive',
-      },
+      aps,
       host: hostLabel || '',
+      kind: kind || '',
+      sessionID: sessionID || '',
     });
     const req = client.request({
       ':method': 'POST',
@@ -121,8 +129,25 @@ const server = http.createServer(async (req, res) => {
     if (!config.keyId) return send(503, { error: 'APNs-Key fehlt noch (config.json: keyId/teamId/p8)' });
     const title = String(body.title || 'Humibeam').slice(0, 100);
     const text = String(body.body || '').slice(0, 200);
-    const results = await Promise.all(Object.keys(tokens).map((t) => sendPush(t, title, text, body.host)));
+    const results = await Promise.all(Object.keys(tokens).map((t) =>
+      sendPush(t, title, text, body.host, body.kind, body.sessionID)));
     return send(200, { ok: true, sent: results.filter((r) => r.ok).length, total: results.length });
+  }
+  // Rückkanal: iPhone beantwortet einen Freigabe-Push → Mac holt die Aktion per Poll ab.
+  if (req.url === '/action' && typeof body.sessionID === 'string' && typeof body.action === 'string') {
+    pendingActions.push({
+      sessionID: body.sessionID.slice(0, 64),
+      action: body.action.slice(0, 32),          // approve | approve_always | deny
+      ts: Date.now(),
+    });
+    if (pendingActions.length > 100) pendingActions.splice(0, pendingActions.length - 100);
+    return send(200, { ok: true });
+  }
+  if (req.url === '/actions') {
+    // Abholen leert die Liste; veraltete Aktionen (>10 Min) verwerfen.
+    const fresh = pendingActions.filter((a) => Date.now() - a.ts < 10 * 60 * 1000);
+    pendingActions = [];
+    return send(200, { actions: fresh });
   }
   send(404, { error: 'not found' });
 });
