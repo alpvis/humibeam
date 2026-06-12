@@ -1,7 +1,7 @@
 {
-  "version": "3.6",
-  "build": 36,
-  "dmgURL": "https://github.com/alpvis/humibeam/releases/download/v3.6/Humibeam.dmg",
-  "notes": "HUMIBEAM-Branding im Hauptfenster (Titel + Header), Copyright-Zeile in der Fußleiste",
+  "version": "3.7",
+  "build": 37,
+  "dmgURL": "https://github.com/alpvis/humibeam/releases/download/v3.7/Humibeam.dmg",
+  "notes": "Terminal-Schriftart und -größe einstellbar (bleibt gespeichert); Einstellungen mit eigenen Reitern für Verlauf und Nutzung",
   "minOS": "13.0"
 }
