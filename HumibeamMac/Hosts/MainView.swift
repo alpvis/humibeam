@@ -84,7 +84,7 @@ struct MainWindowView: View {
                 }
                 Spacer()
             } else {
-                Text("humibeam").font(.headline).foregroundStyle(.secondary)
+                Text("HUMIBEAM").font(.headline).foregroundStyle(.secondary)
                 Spacer()
             }
         }
@@ -129,6 +129,10 @@ struct MainWindowView: View {
             Spacer()
 
             updateArea
+
+            Text("© 2026 HUMIQA GmbH. Alle Rechte vorbehalten.")
+                .font(.caption2).foregroundStyle(.tertiary)
+                .lineLimit(1).fixedSize()
         }
         .padding(.horizontal, 12).padding(.vertical, 6)
         .background(Color(nsColor: shell.theme.chrome))

@@ -49,7 +49,7 @@ final class SessionManager: NSObject, NSWindowDelegate {
             contentRect: NSRect(x: 0, y: 0, width: 1040, height: 660),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered, defer: false)
-        window.title = "humibeam"
+        window.title = "HUMIBEAM"
         // Transparent titlebar + fullSizeContentView: the content's background runs up under the
         // title, so titlebar, session toolbar and terminal read as one surface (no stacked bars).
         window.titlebarAppearsTransparent = true
