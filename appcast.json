@@ -1,7 +1,7 @@
 {
-  "version": "3.4",
-  "build": 34,
-  "dmgURL": "https://github.com/alpvis/humibeam/releases/download/v3.4/Humibeam.dmg",
-  "notes": "Sprach-Diktat funktioniert wieder überall (global), nicht nur im Terminal",
+  "version": "3.5",
+  "build": 35,
+  "dmgURL": "https://github.com/alpvis/humibeam/releases/download/v3.5/Humibeam.dmg",
+  "notes": "Neues Design: Sidebar, Topbar und Fußzeile als Einheit; dunkles Popover; Settings-Reiter Update mit Auto-Update-Prüfung; HUMIBEAM-Branding",
   "minOS": "13.0"
 }
