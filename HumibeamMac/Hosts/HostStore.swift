@@ -96,7 +96,9 @@ final class HostStore {
         case .importedKey:
             guard let path = host.importedKeyPath else { throw SSHKeyManager.ImportError.malformed }
             let pem = try String(contentsOfFile: path, encoding: .utf8)
-            auth = .privateKey(try SSHKeyManager.importPrivateKey(pem: pem))
+            // Passphrase für verschlüsselte Keys liegt (optional) im Keychain pro Host.
+            let passphrase = SSHKeyManager.loadPassword(hostID: "keypass-\(host.id.uuidString)")
+            auth = .privateKey(try SSHKeyManager.importPrivateKey(pem: pem, passphrase: passphrase))
         case .pairedKey:
             guard let raw = SSHKeyManager.loadPairedKey(hostID: host.id.uuidString) else {
                 throw SSHKeyManager.ImportError.malformed

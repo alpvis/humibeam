@@ -5,6 +5,7 @@ struct HostEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @State var host: SSHHost
     @State private var password: String = ""
+    @State private var keyPassphrase: String = ""
     @State private var showCopiedKey = false
     var allHosts: [SSHHost] = []
     let onSave: (SSHHost) -> Void
@@ -65,7 +66,8 @@ struct HostEditorView: View {
                             Spacer()
                             Button("Schlüssel wählen…") { chooseKeyFile() }
                         }
-                        Text("Unterstützt: OpenSSH ed25519 ohne Passphrase (weitere folgen).")
+                        SecureField("Passphrase (falls verschlüsselt)", text: $keyPassphrase)
+                        Text("Unterstützt: OpenSSH ed25519 und ECDSA (p256/p384/p521), mit oder ohne Passphrase.")
                             .font(.caption2).foregroundStyle(.secondary)
                     }
                 }
@@ -148,6 +150,10 @@ struct HostEditorView: View {
     private func save() {
         if host.authKind == .password {
             SSHKeyManager.savePassword(password, hostID: host.id.uuidString)
+        }
+        if host.authKind == .importedKey {
+            // Passphrase pro Host im Keychain ablegen (leer = unverschlüsselt).
+            SSHKeyManager.savePassword(keyPassphrase, hostID: "keypass-\(host.id.uuidString)")
         }
         onSave(host)
         dismiss()

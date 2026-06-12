@@ -80,22 +80,25 @@ enum SSHKeyManager {
     enum ImportError: LocalizedError {
         case notOpenSSH
         case encryptedUnsupported
+        case wrongPassphrase
         case unsupportedKeyType(String)
         case malformed
 
         var errorDescription: String? {
             switch self {
             case .notOpenSSH: return "Keine OpenSSH-Privatschlüsseldatei."
-            case .encryptedUnsupported: return "Passphrase-geschützte Schlüssel werden noch nicht unterstützt. Nutze einen humibeam-Schlüssel oder einen Schlüssel ohne Passphrase."
-            case .unsupportedKeyType(let t): return "Schlüsseltyp \(t) wird noch nicht unterstützt (nur ed25519)."
+            case .encryptedUnsupported: return "Dieser Schlüssel ist passphrasen-geschützt — bitte Passphrase eingeben."
+            case .wrongPassphrase: return "Falsche Passphrase."
+            case .unsupportedKeyType(let t): return "Schlüsseltyp \(t) wird nicht unterstützt (ed25519 und ECDSA p256/p384/p521)."
             case .malformed: return "Schlüsseldatei konnte nicht gelesen werden."
             }
         }
     }
 
-    /// Imports an unencrypted OpenSSH ed25519 private key (the common `~/.ssh/id_ed25519`).
-    /// RSA/ECDSA and passphrase-protected keys are a documented follow-up.
-    static func importPrivateKey(pem: String) throws -> NIOSSHPrivateKey {
+    /// Imports an OpenSSH private key (ed25519 or ECDSA p256/p384/p521). Passphrase-protected
+    /// keys are decrypted via the system `ssh-keygen` (robust, uses OpenSSH's own crypto) and
+    /// then parsed unencrypted.
+    static func importPrivateKey(pem: String, passphrase: String? = nil) throws -> NIOSSHPrivateKey {
         let lines = pem.split(separator: "\n").map(String.init)
         guard lines.first?.contains("BEGIN OPENSSH PRIVATE KEY") == true else { throw ImportError.notOpenSSH }
         let body = lines.dropFirst().prefix { !$0.contains("END OPENSSH PRIVATE KEY") }.joined()
@@ -103,9 +106,16 @@ enum SSHKeyManager {
 
         var reader = ByteReader(blob)
         guard reader.readBytes(15) == Array("openssh-key-v1\0".utf8) else { throw ImportError.malformed }
-        guard let cipher = reader.readSSHString(), String(decoding: cipher, as: UTF8.self) == "none" else {
-            throw ImportError.encryptedUnsupported
+        guard let cipher = reader.readSSHString() else { throw ImportError.malformed }
+        let cipherName = String(decoding: cipher, as: UTF8.self)
+
+        if cipherName != "none" {
+            // Verschlüsselt → mit ssh-keygen entschlüsseln, dann den Klartext-PEM parsen.
+            guard let passphrase, !passphrase.isEmpty else { throw ImportError.encryptedUnsupported }
+            let decrypted = try decryptWithSSHKeygen(pem: pem, passphrase: passphrase)
+            return try importPrivateKey(pem: decrypted, passphrase: nil)
         }
+
         _ = reader.readSSHString() // kdfname
         _ = reader.readSSHString() // kdfoptions
         guard reader.readUInt32() == 1 else { throw ImportError.malformed }
@@ -117,12 +127,75 @@ enum SSHKeyManager {
         _ = pr.readUInt32() // check2
         guard let keyType = pr.readSSHString() else { throw ImportError.malformed }
         let typeStr = String(decoding: keyType, as: UTF8.self)
-        guard typeStr == "ssh-ed25519" else { throw ImportError.unsupportedKeyType(typeStr) }
-        _ = pr.readSSHString() // public key (32)
-        guard let privField = pr.readSSHString(), privField.count >= 32 else { throw ImportError.malformed }
-        let seed = Data(privField.prefix(32))
-        guard let signing = try? Curve25519.Signing.PrivateKey(rawRepresentation: seed) else { throw ImportError.malformed }
-        return NIOSSHPrivateKey(ed25519Key: signing)
+
+        switch typeStr {
+        case "ssh-ed25519":
+            _ = pr.readSSHString() // public key (32)
+            guard let privField = pr.readSSHString(), privField.count >= 32 else { throw ImportError.malformed }
+            let seed = Data(privField.prefix(32))
+            guard let signing = try? Curve25519.Signing.PrivateKey(rawRepresentation: seed) else { throw ImportError.malformed }
+            return NIOSSHPrivateKey(ed25519Key: signing)
+
+        case "ecdsa-sha2-nistp256", "ecdsa-sha2-nistp384", "ecdsa-sha2-nistp521":
+            _ = pr.readSSHString() // curve name
+            _ = pr.readSSHString() // public point Q
+            guard let dField = pr.readSSHString() else { throw ImportError.malformed }
+            // mpint kann ein führendes 0x00 (Vorzeichen) tragen; auf Kurvenlänge normalisieren.
+            let d = Data(stripLeadingZero(dField))
+            switch typeStr {
+            case "ecdsa-sha2-nistp256":
+                guard let k = try? P256.Signing.PrivateKey(rawRepresentation: leftPad(d, to: 32)) else { throw ImportError.malformed }
+                return NIOSSHPrivateKey(p256Key: k)
+            case "ecdsa-sha2-nistp384":
+                guard let k = try? P384.Signing.PrivateKey(rawRepresentation: leftPad(d, to: 48)) else { throw ImportError.malformed }
+                return NIOSSHPrivateKey(p384Key: k)
+            default:
+                guard let k = try? P521.Signing.PrivateKey(rawRepresentation: leftPad(d, to: 66)) else { throw ImportError.malformed }
+                return NIOSSHPrivateKey(p521Key: k)
+            }
+
+        default:
+            throw ImportError.unsupportedKeyType(typeStr)
+        }
+    }
+
+    private static func stripLeadingZero(_ bytes: [UInt8]) -> [UInt8] {
+        var b = bytes
+        while b.first == 0, b.count > 1 { b.removeFirst() }
+        return b
+    }
+
+    private static func leftPad(_ data: Data, to length: Int) -> Data {
+        if data.count >= length { return data.suffix(length) }
+        return Data(repeating: 0, count: length - data.count) + data
+    }
+
+    /// Entschlüsselt einen passphrasen-geschützten Key mit dem systemeigenen ssh-keygen
+    /// (kopiert ihn in eine temporäre Datei, entfernt die Passphrase, liest ihn zurück).
+    /// Nur macOS — iOS hat kein Process/ssh-keygen (dort werden verschlüsselte Keys abgelehnt).
+    private static func decryptWithSSHKeygen(pem: String, passphrase: String) throws -> String {
+        #if os(macOS)
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("humibeam-key-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        try pem.write(to: tmp, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: tmp.path)
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh-keygen")
+        // -p ändert die Passphrase: alte (-P) → neue leere (-N "").
+        process.arguments = ["-p", "-P", passphrase, "-N", "", "-f", tmp.path]
+        process.standardError = Pipe()
+        process.standardOutput = Pipe()
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            throw ImportError.wrongPassphrase
+        }
+        return try String(contentsOf: tmp, encoding: .utf8)
+        #else
+        throw ImportError.encryptedUnsupported
+        #endif
     }
 
     // MARK: - Keychain helpers

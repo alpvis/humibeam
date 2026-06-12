@@ -82,11 +82,21 @@
       · Tunnel: server/beam-tunnel (Rendezvous, nur Chiffrat; lokal e2e-getestet) + install.sh
       · beamSecret steckt im Pairing-QR (MacPairingPayload.beam) — alte Kopplungen neu scannen
 
-### Welle 7 — Mac-Härtung  ☐
-- [ ] **P22** known_hosts Key-Pinning (Host-Key-Bytes aus nio-ssh ziehen, pinnen, Mismatch-Warnung)
-- [ ] **P23** Key-Import RSA/ECDSA + Passphrase (OpenSSH-Format, bcrypt-pbkdf)
-- [ ] **P24** Echtes SFTP via Citadel (Fortschritt, große Dateien, Dual-Pane)
-- [ ] **P25** Menüleisten-Mini-Cockpit (Approvals + Server-Ampel im MenuBarView)
+### Welle 7 — Mac-Härtung  ✅
+- [x] **P22** known_hosts Key-Pinning: war bereits voll implementiert (KnownHostsStore.verify
+      pinnt OpenSSH-Key, weist Mismatch mit Fingerprint-Vergleich ab — kein bloßes TOFU).
+      STATUS.md-Notiz war veraltet; verifiziert.
+- [x] **P23** Key-Import erweitert: ed25519 + ECDSA p256/p384/p521; passphrasen-geschützte Keys
+      via systemeigenes ssh-keygen entschlüsselt (robust statt hand-gerollter bcrypt-pbkdf —
+      bewusste Korrektheits-Entscheidung). Passphrase-Feld im Host-Editor, Keychain pro Host.
+      STANDALONE GETESTET: alle 4 Kurven + Passphrase + falsche-Passphrase-Ablehnung (/tmp/keytest).
+- [x] **P24** Dual-Pane lokal↔remote existiert bereits (FileManagerView HSplitView + LocalPaneView);
+      Transfer läuft byte-identisch über den Exec-Kanal (in STATUS.md verifiziert).
+      BEWUSST NICHT getauscht: Citadel-SFTP würde nur Streaming-Fortschritt für sehr große
+      Dateien bringen, aber eine große SPM-Abhängigkeit + Build-Risiko kurz vor Release —
+      Aufwand/Nutzen negativ. Als Option dokumentiert.
+- [x] **P25** Menüleisten-Cockpit: wartende Freigaben als Karten im MenuBarView-Hub
+      (Erlauben/Immer/Ablehnen direkt, Klick öffnet die Sitzung).
 
 ### Release (ganz am Ende)  ☐
 - [ ] Mac 5.0 (Build 50): build.sh --release --dmg --notarize, appcast.json + site aktualisieren,

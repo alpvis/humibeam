@@ -207,6 +207,13 @@ struct MenuBarView: View {
                 sessions.openLocalSession(); dismissPopover()
             }
 
+            // Agent-Cockpit: wartende Freigaben direkt aus der Menüleiste beantworten.
+            let waiting = sessions.shell.tabs.filter { $0.awaitingApproval }
+            if !waiting.isEmpty {
+                hubSectionLabel("WARTET AUF FREIGABE")
+                ForEach(waiting) { tab in cockpitApprovalRow(tab) }
+            }
+
             let hosts = sessions.shell.hostStore.hosts
             if !hosts.isEmpty {
                 hubSectionLabel("SERVER")
@@ -248,6 +255,45 @@ struct MenuBarView: View {
             }
             .padding(.top, 2)
         }
+    }
+
+    /// Kompakte Freigabe-Karte in der Menüleiste: Aktion + Erlauben/Ablehnen, Klick öffnet die Sitzung.
+    private func cockpitApprovalRow(_ tab: TerminalTab) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Button {
+                sessions.showMainWindow()
+                sessions.shell.selectedTabID = tab.id
+                dismissPopover()
+            } label: {
+                HStack(spacing: 7) {
+                    Image(systemName: tab.approval?.action.symbol ?? "questionmark.circle")
+                        .foregroundStyle(tab.approval?.looksDangerous == true ? .red : .cyan)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(tab.host.displayName).font(.system(size: 12, weight: .semibold))
+                        if let q = tab.approval?.question, !q.isEmpty {
+                            Text(q).font(.system(size: 10)).foregroundStyle(.secondary)
+                                .lineLimit(1).truncationMode(.tail)
+                        }
+                    }
+                    Spacer()
+                }
+            }
+            .buttonStyle(.plain)
+            HStack(spacing: 6) {
+                Button("Erlauben") { tab.controller.approve() }
+                    .controlSize(.small).buttonStyle(.borderedProminent)
+                    .tint(tab.approval?.looksDangerous == true ? .red : .green)
+                if tab.approvalAllowAlways {
+                    Button("Immer") { tab.controller.approveAlways() }
+                        .controlSize(.small).buttonStyle(.bordered)
+                }
+                Button("Ablehnen") { tab.controller.deny() }
+                    .controlSize(.small).buttonStyle(.bordered)
+            }
+        }
+        .padding(8)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.1)))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.orange.opacity(0.3)))
     }
 
     private func hubSectionLabel(_ text: String) -> some View {
