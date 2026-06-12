@@ -196,7 +196,7 @@ humibeam schreibt Text/Pfad direkt in den eigenen PTY-Channel — die ganze
 1. ~~**SFTP-Lib:** nio-ssh+Citadel vs. libssh2~~ → **in M1 geklärt:** Paste-Upload via Exec-Channel (kein SFTP), Datei-Browser via Citadel in V1.
 2. **UI-Form:** Vollwertiges Fenster mit Tabs (wie Terminal/iTerm) — ja, vs. Menüleisten-only (nein, zu klein für ein Terminal).
 3. **Voice von Anfang an** oder erst nach SSH-Kern? → Plan: SSH-Kern zuerst (MVP), Voice in M6.
-4. **Open Source?** Humitext ist MIT — humibeam genauso, oder kommerzieller (humiqa-Marke)?
+4. ~~**Open Source?**~~ → **Entschieden (2026-06-12): Proprietär.** Code öffentlich sichtbar, aber alle Rechte bei der HUMIQA GmbH (siehe LICENSE).
 5. **Zielgruppe-Scope:** nur Claude Code, oder generisch für jede agentische CLI (Aider, etc.)?
 
 ---

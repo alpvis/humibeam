@@ -213,3 +213,13 @@ humibeam ist aus **[humitext](https://github.com/alpvis/humitext)** hervorgegang
 (Speech-to-Text für macOS) und übernimmt dessen Voice-, Keychain-, Hotkey- und Settings-Kern.
 Diktat funktioniert weiterhin **überall** (per simuliertem `Cmd+V` in Fremd-Apps) — und schreibt
 zusätzlich Text/Pfade direkt in den eigenen PTY-Channel, wenn das Terminal fokussiert ist.
+
+---
+
+## Lizenz
+
+© 2026 HUMIQA GmbH. Alle Rechte vorbehalten.
+
+humibeam ist ein Produkt der HUMIQA GmbH.
+
+Dieses Projekt ist proprietär. Der Quellcode ist öffentlich sichtbar, darf jedoch ohne ausdrückliche schriftliche Zustimmung der HUMIQA GmbH nicht kopiert, verändert, verbreitet oder kommerziell genutzt werden.
