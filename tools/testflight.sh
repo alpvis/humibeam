@@ -32,6 +32,8 @@ cat > /tmp/humibeam-export-options.plist << 'EOF'
 <dict>
 	<key>method</key>
 	<string>app-store-connect</string>
+	<key>destination</key>
+	<string>upload</string>
 	<key>teamID</key>
 	<string>DC289RNL2G</string>
 	<key>uploadSymbols</key>

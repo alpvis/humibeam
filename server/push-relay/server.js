@@ -127,6 +127,9 @@ const server = http.createServer(async (req, res) => {
   send(404, { error: 'not found' });
 });
 
-server.listen(config.port || 8799, '127.0.0.1', () => {
-  console.log(`humibeam-push läuft auf 127.0.0.1:${config.port || 8799} (APNs ${config.keyId ? 'konfiguriert' : 'WARTET AUF KEY'})`);
+// Bei dockerisiertem nginx auf die Docker-Gateway-IP binden (z.B. "host": "172.18.0.1"),
+// sonst erreicht der Container den Host nicht. ufw-Freigabe nicht vergessen.
+const bindHost = config.host || '127.0.0.1';
+server.listen(config.port || 8799, bindHost, () => {
+  console.log(`humibeam-push läuft auf ${bindHost}:${config.port || 8799} (APNs ${config.keyId ? 'konfiguriert' : 'WARTET AUF KEY'})`);
 });
