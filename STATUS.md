@@ -86,6 +86,35 @@ cd /Users/ali/humibeam
 ```
 Hier konnte ich nur ad-hoc/Apple-Development signieren (keine Developer-ID im Keychain), daher Release universal verifiziert, aber nicht notarisiert.
 
+## v5 „Symbiose" — Mac 5.0 / iOS 2.0 (2026-06-12)
+
+Großes Update: Mac und iOS arbeiten als ein System. 25 Funktionen in 7 Wellen (Details: `PLAN-V5.md`).
+
+**Fundament — Humibeam-Konto + Sync (E2E-verschlüsselt):** Anmelden/Registrieren, Profile · Snippets ·
+Lesezeichen · Theme/Schrift syncen über alle Macs + iPhones + iPads. Server `server/sync/` (Node, ohne
+Dependencies, PBKDF2 600k → HKDF → AES-GCM; der Server sieht nie Passwort/Klartext). Secrets bleiben im Keychain.
+
+**iOS auf Mac-Niveau:** Datei-Browser (Up-/Download/Teilen/Editor/chmod) · Multi-Session + iPad-Shortcuts ·
+Transcript-Archiv · Server-Health-Ampel · Port-Forwarding · Schriftart/Größe · Face-ID-Schutz · lokales
+Apple-Diktat. **KI-Cockpit:** Agent-Inbox (wartende Freigaben), „erklären/beheben/vorschlagen", Claude-Status Plus.
+
+**Symbiose Mac ↔ iOS:** „Mein Mac als Server" per QR-Pairing (Mac trägt Key selbst in authorized_keys ein) ·
+Session-Handoff (tmux) · iOS-Fleet-Übersicht · **MacBeam** (Mac-Bildschirm vom iPhone steuern, H.264 + CGEvent,
+direkt im WLAN oder via `server/beam-tunnel/`, alles E2E-verschlüsselt).
+
+**Push & Glanz:** Freigaben aus der iOS-Mitteilung (Rückkanal Relay → Mac) · Apple-Watch-App · Widget +
+Live Activity (Dynamic Island) · Siri/Kurzbefehle. **Mac-Härtung:** Key-Import ed25519 + ECDSA + Passphrase
+(via ssh-keygen), known_hosts-Pinning, Menüleisten-Cockpit.
+
+**Verifiziert von mir:** Mac- + iOS-Build grün nach jeder Welle (inkl. Watch- + Widget-Target). iOS startet
+stabil. Server-Logik e2e-getestet: Sync-API (register/login/blob/Konflikt) + Krypto-Roundtrip · Push-Relay
+Aktions-Rückkanal · Beam-Tunnel-Rendezvous · Key-Import (4 Kurven + Passphrase). **Dein Test (GUI/echte Geräte):**
+QR-Pairing, MacBeam-Bild/Steuerung, Konto-Sync zwischen zwei Geräten, Push-Aktionen, Watch — brauchen physische
+Geräte + Berechtigungen (Bildschirmaufnahme/Bedienungshilfen für MacBeam).
+
+**Server-Deploy noch offen** (wartet auf SSH-Key in authorized_keys auf alpvis.com): `server/sync/install.sh`
+und `server/beam-tunnel/install.sh` ausführen + nginx-Location für `/humibeam-sync/`.
+
 ## iOS 1.1 — Parität-Update (2026-06-12)
 
 - **Snippets auf iOS**: gleiche Daten/Logik wie am Mac (`SnippetStore` geteilt), inkl.
