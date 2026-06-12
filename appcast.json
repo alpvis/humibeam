@@ -1,7 +1,7 @@
 {
-  "version": "4.0",
-  "build": 40,
-  "dmgURL": "https://github.com/alpvis/humibeam/releases/download/v4.0/Humibeam.dmg",
-  "notes": "10 große Verbesserungen: abbruchsichere tmux-Sitzungen, Befehls-Verlauf (⌘R), Server-Gesundheit in der Sidebar, Fleet-Übersicht, durchsuchbare Agenten-Protokolle, Freigaben direkt aus Benachrichtigungen, iPhone-Push-Vorbereitung, iCloud-Sync für Profile und Einstellungen, neues Onboarding",
+  "version": "5.0",
+  "build": 50,
+  "dmgURL": "https://github.com/alpvis/humibeam/releases/download/v5.0/Humibeam.dmg",
+  "notes": "v5 Symbiose: Humibeam-Konto mit Ende-zu-Ende-verschluesseltem Geraete-Sync (Profile, Snippets, Lesezeichen, Darstellung ueber alle Macs & iPhones). Mac als Server per QR fuers iPhone, Sitzungs-Handoff, MacBeam (Mac-Bildschirm vom iPhone steuern). Agent-Inbox & Menueleisten-Cockpit fuer Freigaben. Key-Import fuer ECDSA & passphrasen-geschuetzte Schluessel, known_hosts-Pinning.",
   "minOS": "13.0"
 }
