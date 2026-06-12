@@ -10,6 +10,7 @@ struct TerminalScreen: View {
     @StateObject private var holder = ControllerHolder()
     @State private var showsDiff = false
     @State private var photoItem: PhotosPickerItem?
+    @State private var dictationError: String?
 
     var body: some View {
         let controller = holder.controller(for: host, model: model)
@@ -30,6 +31,15 @@ struct TerminalScreen: View {
             }
         }
         .animation(.snappy(duration: 0.2), value: controller.approval)
+        .onReceive(NotificationCenter.default.publisher(for: .dictationFailed)) { note in
+            dictationError = note.userInfo?["message"] as? String ?? "Diktat fehlgeschlagen."
+        }
+        .alert("Diktat", isPresented: Binding(get: { dictationError != nil },
+                                              set: { if !$0 { dictationError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(dictationError ?? "")
+        }
         .navigationTitle(host.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

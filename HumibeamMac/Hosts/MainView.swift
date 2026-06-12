@@ -124,6 +124,10 @@ struct MainWindowView: View {
                 .buttonStyle(.borderless)
                 .help("Einstellungen")
 
+            Button { sessions.openFleetWindow() } label: { Image(systemName: "square.grid.2x2") }
+                .buttonStyle(.borderless)
+                .help("Fleet-Übersicht (⌘⇧F)")
+
             statusArea
 
             Spacer()
@@ -225,7 +229,8 @@ struct SidebarView: View {
                 }
                 ForEach(shell.hostStore.hosts) { host in
                     ProfileRow(host: host,
-                               connected: shell.tabs.contains { $0.host.id == host.id && $0.connected })
+                               connected: shell.tabs.contains { $0.host.id == host.id && $0.connected },
+                               stats: shell.tabs.first { $0.host.id == host.id && $0.connected }?.stats)
                     .contentShape(Rectangle())
                     .onTapGesture { sessions.openSSHSession(host) }
                     .contextMenu {
@@ -260,15 +265,23 @@ struct SidebarView: View {
 private struct ProfileRow: View {
     let host: SSHHost
     let connected: Bool
+    var stats: ServerStats?
     var body: some View {
         HStack(spacing: 9) {
             Image(systemName: connected ? "bolt.horizontal.circle.fill" : "server.rack")
-                .foregroundStyle(connected ? Color.green : Color.secondary)
+                .foregroundStyle(connected ? (stats?.isCritical == true ? Color.red : Color.green) : Color.secondary)
                 .frame(width: 18)
             VStack(alignment: .leading, spacing: 1) {
                 Text(host.displayName).font(.body)
-                Text("\(host.username)@\(host.host)").font(.caption2).foregroundStyle(.secondary)
-                    .lineLimit(1).truncationMode(.middle)
+                if let stats, connected, !stats.summary.isEmpty {
+                    Text(stats.summary).font(.caption2)
+                        .foregroundStyle(stats.isCritical ? .red : .secondary)
+                        .lineLimit(1).truncationMode(.tail)
+                        .help("Server-Vitalwerte, alle 30 s aktualisiert")
+                } else {
+                    Text("\(host.username)@\(host.host)").font(.caption2).foregroundStyle(.secondary)
+                        .lineLimit(1).truncationMode(.middle)
+                }
             }
             Spacer(minLength: 0)
         }
@@ -321,12 +334,20 @@ private struct EmptyStateView: View {
         VStack(spacing: 18) {
             BrandMark(size: 56)
             VStack(spacing: 6) {
-                Text("humibeam").font(.system(size: 26, weight: .bold))
+                Text("HUMIBEAM").font(.system(size: 26, weight: .bold))
                 Text("Der SSH-Client für agentische CLIs. Profil wählen — Terminal, Dateien und Screenshot-Paste laufen über dieselbe Verbindung.")
                     .font(.callout).foregroundStyle(.secondary)
                     .multilineTextAlignment(.center).frame(maxWidth: 440)
             }
             if shell.hostStore.hosts.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    onboardingStep("1", "Profil anlegen", "Server-Adresse und Benutzer eintragen — den SSH-Schlüssel erzeugt humibeam selbst.")
+                    onboardingStep("2", "Schlüssel freischalten", "Eine Zeile in die authorized_keys am Server — humibeam legt sie dir in die Zwischenablage.")
+                    onboardingStep("3", "Loslegen", "Verbinden, Claude starten — Freigaben kommen als Karte und Mitteilung.")
+                }
+                .padding(16)
+                .frame(maxWidth: 440)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.primary.opacity(0.04)))
                 Button { newHost() } label: {
                     Label("Erstes Profil anlegen", systemImage: "plus").frame(minWidth: 200)
                 }
@@ -340,6 +361,21 @@ private struct EmptyStateView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(40)
+    }
+
+    private func onboardingStep(_ number: String, _ title: String, _ detail: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(number)
+                .font(.system(size: 12, weight: .bold))
+                .frame(width: 22, height: 22)
+                .background(Circle().fill(Color.accentColor.opacity(0.15)))
+                .foregroundStyle(Color.accentColor)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(size: 12.5, weight: .semibold))
+                Text(detail).font(.system(size: 11)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 }
 

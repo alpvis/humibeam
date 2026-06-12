@@ -107,6 +107,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         NotificationCenter.default.addObserver(
             self, selector: #selector(handleShowHistoryHub), name: .showHistoryHub, object: nil)
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        registerNotificationActions()
 
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
@@ -213,6 +214,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let palette = NSMenuItem(title: "Befehls-Palette…", action: #selector(openPaletteAction), keyEquivalent: "k")
         palette.target = self
         menu.addItem(palette)
+
+        let history = NSMenuItem(title: "Befehls-Verlauf…", action: #selector(openCommandHistoryAction), keyEquivalent: "r")
+        history.target = self
+        menu.addItem(history)
+
+        let fleet = NSMenuItem(title: "Fleet-Übersicht…", action: #selector(openFleetAction), keyEquivalent: "F")
+        fleet.target = self
+        menu.addItem(fleet)
+
+        let transcripts = NSMenuItem(title: "Agenten-Protokolle…", action: #selector(openTranscriptsAction), keyEquivalent: "")
+        transcripts.target = self
+        menu.addItem(transcripts)
         menu.addItem(.separator())
 
         let local = NSMenuItem(title: "Lokales Terminal", action: #selector(openLocalAction), keyEquivalent: "t")
@@ -245,6 +258,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc private func fontSmallerAction() { shell.terminalFontSize = max(9, shell.terminalFontSize - 1) }
 
     @objc private func openPaletteAction() { sessions.toggleCommandPalette() }
+    @objc private func openCommandHistoryAction() { sessions.toggleCommandHistory() }
+    @objc private func openFleetAction() { sessions.openFleetWindow() }
+    @objc private func openTranscriptsAction() { sessions.openTranscriptsWindow() }
     @objc private func openLocalAction() { sessions.openLocalSession() }
     @objc private func openProfilesAction() { sessions.openProfilesWindow() }
     @objc private func openProfileAction(_ sender: NSMenuItem) {
@@ -275,9 +291,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         content.title = title
         content.body = body
         content.sound = .default
+        content.userInfo = ["sessionID": id.uuidString]
+        if info["kind"] as? String == "approval" {
+            content.categoryIdentifier = Self.approvalCategoryID
+        }
         let request = UNNotificationRequest(identifier: id.uuidString + "-" + title,
                                             content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
+        // Zusätzlich aufs iPhone, falls das Push-Relay konfiguriert ist.
+        PushRelayClient.notify(title: title, body: body,
+                               host: shell.tabs.first { $0.id == id }?.host.displayName ?? "")
+    }
+
+    // MARK: - Freigabe direkt aus der Benachrichtigung (Erlauben / Immer / Ablehnen)
+
+    private static let approvalCategoryID = "CLAUDE_APPROVAL"
+
+    private func registerNotificationActions() {
+        let approve = UNNotificationAction(identifier: "APPROVE", title: "Erlauben", options: [])
+        let always = UNNotificationAction(identifier: "APPROVE_ALWAYS", title: "Immer erlauben", options: [])
+        let deny = UNNotificationAction(identifier: "DENY", title: "Ablehnen", options: [.destructive])
+        let category = UNNotificationCategory(identifier: Self.approvalCategoryID,
+                                              actions: [approve, always, deny],
+                                              intentIdentifiers: [])
+        UNUserNotificationCenter.current().setNotificationCategories([category])
+        UNUserNotificationCenter.current().delegate = self
     }
 
     /// Mic button in a terminal: toggle background dictation. The result is routed straight into
@@ -382,5 +420,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 appState.page = .main
             }
         }
+    }
+}
+
+// MARK: - Benachrichtigungs-Aktionen (Erlauben/Ablehnen direkt aus der Mitteilung)
+
+extension AppDelegate: UNUserNotificationCenterDelegate {
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                            didReceive response: UNNotificationResponse,
+                                            withCompletionHandler completionHandler: @escaping () -> Void) {
+        let action = response.actionIdentifier
+        let idString = response.notification.request.content.userInfo["sessionID"] as? String
+        Task { @MainActor in
+            let tab = idString.flatMap { s in
+                UUID(uuidString: s).flatMap { id in self.shell.tabs.first { $0.id == id } }
+            }
+            switch action {
+            case "APPROVE": tab?.controller.approve()
+            case "APPROVE_ALWAYS": tab?.controller.approveAlways()
+            case "DENY": tab?.controller.deny()
+            default:
+                if let tab { self.sessions.focus(tab.id) }
+            }
+            completionHandler()
+        }
+    }
+
+    /// Mitteilungen auch zeigen, wenn die App im Vordergrund ist (anderes Fenster fokussiert).
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                            willPresent notification: UNNotification,
+                                            withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .sound])
     }
 }

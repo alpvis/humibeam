@@ -96,10 +96,11 @@ private struct HostRow: View {
     }
 }
 
-/// Einstellungen: Theme + Schriftgröße.
+/// Einstellungen: Theme + Schriftgröße + Diktat-Key.
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
+    @State private var openAIKey = KeychainService.load(key: .openAIAPIKey) ?? ""
 
     var body: some View {
         @Bindable var model = model
@@ -113,6 +114,35 @@ struct SettingsView: View {
                     }
                     Stepper("Schriftgröße: \(Int(model.fontSize))",
                             value: $model.fontSize, in: 9...22, step: 1)
+                }
+                Section {
+                    SecureField("sk-…", text: $openAIKey)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .onChange(of: openAIKey) { _, value in
+                            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if trimmed.isEmpty { KeychainService.delete(key: .openAIAPIKey) }
+                            else { try? KeychainService.save(key: .openAIAPIKey, value: trimmed) }
+                        }
+                } header: {
+                    Text("Sprach-Diktat (OpenAI API Key)")
+                } footer: {
+                    Text("Für den Mikrofon-Knopf in der Terminal-Tastenleiste: aufnehmen → Whisper → Text landet im Terminal. Der Key bleibt im Geräte-Keychain.")
+                }
+                Section {
+                    TextField("Relay-URL", text: Binding(
+                        get: { PushRegistration.baseURL },
+                        set: { PushRegistration.baseURL = $0 }
+                    ))
+                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    SecureField("Relay-Secret", text: Binding(
+                        get: { PushRegistration.secret },
+                        set: { PushRegistration.secret = $0 }
+                    ))
+                } header: {
+                    Text("Push (\u{201E}Claude wartet\u{201C})")
+                } footer: {
+                    Text("Gleiche Werte wie in der Mac-App (Einstellungen → iPhone-Push). Das Relay läuft auf deinem Server.")
                 }
                 Section {
                     LabeledContent("Version",

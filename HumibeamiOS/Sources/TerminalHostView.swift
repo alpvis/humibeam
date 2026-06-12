@@ -24,6 +24,7 @@ final class TerminalKeyAccessory: UIInputView {
     private weak var controller: TerminalController?
     private var ctrlActive = false
     private var ctrlButton: UIButton?
+    private var micButton: UIButton?
 
     init(controller: TerminalController) {
         self.controller = controller
@@ -44,6 +45,7 @@ final class TerminalKeyAccessory: UIInputView {
 
     private func buildButtons() {
         let keys: [Key] = [
+            Key(label: "mic.fill", isSymbol: true) { $0.toggleDictation() },
             Key(label: "esc", isSymbol: false) { $0.send([0x1b]) },
             Key(label: "arrow.right.to.line", isSymbol: true) { $0.send([0x09]) },                 // Tab
             Key(label: "arrow.left.to.line", isSymbol: true) { $0.send([0x1b, 0x5b, 0x5a]) },     // ⇧Tab (CSI Z)
@@ -81,7 +83,8 @@ final class TerminalKeyAccessory: UIInputView {
                 guard let self else { return }
                 key.action(self)
             })
-            if i == 3 { ctrlButton = button }
+            if i == 0 { micButton = button }
+            if i == 4 { ctrlButton = button }
             stack.addArrangedSubview(button)
         }
 
@@ -135,6 +138,33 @@ final class TerminalKeyAccessory: UIInputView {
 
     private func dismissKeyboard() {
         controller?.terminalView.resignFirstResponder()
+    }
+
+    /// Sprach-Diktat: Tap startet die Aufnahme (Button wird rot), zweiter Tap stoppt,
+    /// transkribiert via Whisper und tippt den Text ins Terminal.
+    private func toggleDictation() {
+        DictationService.shared.onStateChange = { [weak self] recording in
+            var config: UIButton.Configuration = recording ? .filled() : .gray()
+            if recording { config.baseBackgroundColor = .systemRed }
+            config.cornerStyle = .medium
+            config.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 9, bottom: 6, trailing: 9)
+            config.image = UIImage(systemName: recording ? "stop.fill" : "mic.fill",
+                                   withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .medium))
+            self?.micButton?.configuration = config
+        }
+        DictationService.shared.toggle { [weak self] result in
+            Task { @MainActor in
+                switch result {
+                case .success(let text) where !text.isEmpty:
+                    self?.controller?.sendToShell(text)
+                case .success:
+                    break
+                case .failure(let error):
+                    NotificationCenter.default.post(name: .dictationFailed, object: nil,
+                                                    userInfo: ["message": error.localizedDescription])
+                }
+            }
+        }
     }
 
     /// Externe Tasten (z. B. aus der Terminal-Ansicht): Ctrl-Status für getippten Text anwenden.

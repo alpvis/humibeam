@@ -28,6 +28,10 @@ struct SSHHost: Identifiable, Codable, Hashable {
     var shortcut: String? = nil
     /// Optional bastion: route this connection through another saved host (SSH ProxyJump).
     var proxyJumpHostID: UUID? = nil
+    /// Sitzung in tmux starten: überlebt Abbrüche und App-Neustarts (Optional → alte Profile bleiben lesbar).
+    var useTmux: Bool? = nil
+
+    var tmuxEnabled: Bool { useTmux ?? false }
 
     var displayName: String {
         let n = name.trimmingCharacters(in: .whitespaces)
@@ -39,10 +43,12 @@ struct SSHHost: Identifiable, Codable, Hashable {
 @MainActor
 final class HostStore {
     var hosts: [SSHHost] {
-        didSet { save(); onHostsChanged?() }
+        didSet { save(); onHostsChanged?(); onHostsChangedSync?() }
     }
     /// Fired whenever the saved profiles change (used to rebuild the shortcut menu).
     @ObservationIgnored var onHostsChanged: (() -> Void)?
+    /// Zweiter Hook für den iCloud-Sync (onHostsChanged gehört dem AppDelegate-Menü).
+    @ObservationIgnored var onHostsChangedSync: (() -> Void)?
 
     private static var fileURL: URL {
         let dir = AppSupportPaths.appSupportDirectoryURL

@@ -72,6 +72,15 @@ struct HostEditorView: View {
                     }
                 }
 
+                Section {
+                    Toggle("Abbruchsicher (tmux)", isOn: Binding(
+                        get: { host.tmuxEnabled },
+                        set: { host.useTmux = $0 }
+                    ))
+                } footer: {
+                    Text("Sitzung läuft am Server in tmux weiter und wird beim Neuverbinden nahtlos fortgesetzt. tmux muss am Server installiert sein.")
+                }
+
                 if model.hostStore.hosts.contains(where: { $0.id != host.id }) {
                     Section("Verbindung über Bastion (ProxyJump)") {
                         Picker("Bastion", selection: $host.proxyJumpHostID) {

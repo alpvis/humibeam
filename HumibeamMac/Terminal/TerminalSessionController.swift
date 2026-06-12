@@ -10,6 +10,43 @@ final class TerminalSessionController: NSObject, TerminalViewDelegate {
     let terminalView: TerminalView
     private(set) var connection: SSHConnection?
     private(set) var ptySession: PTYSession?
+    /// Wird nach jedem (Re-)Connect als erste Eingabe in die Shell geschrieben (z.B. tmux-Attach).
+    var startupCommand: String?
+
+    // MARK: - Sitzungs-Protokoll (vollständiges Transkript auf Platte, durchsuchbar)
+
+    /// Ordnername fürs Protokoll-Archiv (Host-Anzeigename); nil = nicht archivieren.
+    var archiveLabel: String?
+    private var archiveURL: URL?
+    private var archiveBuffer = ""
+
+    private func archive(_ chunk: String) {
+        guard let label = archiveLabel else { return }
+        if archiveURL == nil {
+            let dir = AppSupportPaths.appSupportDirectoryURL
+                .appendingPathComponent("Transcripts", isDirectory: true)
+                .appendingPathComponent(label.replacingOccurrences(of: "/", with: "-"), isDirectory: true)
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let fmt = DateFormatter()
+            fmt.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+            archiveURL = dir.appendingPathComponent("\(fmt.string(from: Date())).log")
+        }
+        archiveBuffer += chunk
+        if archiveBuffer.utf8.count > 8192 { flushArchive() }
+    }
+
+    func flushArchive() {
+        guard let url = archiveURL, !archiveBuffer.isEmpty else { return }
+        let data = Data(archiveBuffer.utf8)
+        archiveBuffer = ""
+        if let handle = try? FileHandle(forWritingTo: url) {
+            defer { try? handle.close() }
+            _ = try? handle.seekToEnd()
+            try? handle.write(contentsOf: data)
+        } else {
+            try? data.write(to: url)
+        }
+    }
     private let knownHosts: KnownHostsStore
 
     var onConnected: (() -> Void)?
@@ -101,6 +138,9 @@ final class TerminalSessionController: NSObject, TerminalViewDelegate {
                 session.onClosed = { [weak self] in
                     Task { @MainActor in self?.handleSessionClosed() }
                 }
+                if let startup = self.startupCommand {
+                    session.write(startup + "\n")
+                }
                 self.reconnectAttempts = 0
                 self.onStatus?("verbunden")
                 self.onConnected?()
@@ -121,6 +161,7 @@ final class TerminalSessionController: NSObject, TerminalViewDelegate {
         ptySession = nil
         connection = nil
         stopKeepalive()
+        flushArchive()
         if userInitiatedDisconnect { onStatus?("Verbindung geschlossen."); onClosed?(); return }
         guard autoReconnect, lastCredentials != nil else {
             onStatus?("Verbindung geschlossen."); onClosed?(); return
@@ -201,6 +242,7 @@ final class TerminalSessionController: NSObject, TerminalViewDelegate {
         reconnectWorkItem?.cancel()
         reconnectWorkItem = nil
         stopKeepalive()
+        flushArchive()
         ptySession?.close()
         let conn = connection
         connection = nil
@@ -215,6 +257,7 @@ final class TerminalSessionController: NSObject, TerminalViewDelegate {
     private func captureTranscript(_ bytes: [UInt8]) {
         let chunk = Self.stripANSI(String(decoding: bytes, as: UTF8.self))
         guard !chunk.isEmpty else { return }
+        archive(chunk)
         transcript += chunk
         if transcript.count > Self.transcriptCap {
             transcript = String(transcript.suffix(Self.transcriptCap))
@@ -347,7 +390,39 @@ final class TerminalSessionController: NSObject, TerminalViewDelegate {
     func send(source: TerminalView, data: ArraySlice<UInt8>) {
         let bytes = Array(data)
         ptySession?.write(bytes)
+        captureCommandInput(bytes)
         onUserInput?(bytes) // broadcast-input to sibling sessions, if enabled
+    }
+
+    // MARK: - Befehls-Verlauf (Zeilenpuffer der Tastatureingabe)
+
+    var onCommandSubmitted: ((String) -> Void)?
+    private var lineBuffer: [UInt8] = []
+    /// Pfeiltasten/Tab verändern die echte Zeile unsichtbar für uns → Zeile nicht aufzeichnen.
+    private var lineDirty = false
+
+    private func captureCommandInput(_ bytes: [UInt8]) {
+        for b in bytes {
+            switch b {
+            case 0x0D, 0x0A: // Enter
+                if !lineDirty, !lineBuffer.isEmpty,
+                   let cmd = String(bytes: lineBuffer, encoding: .utf8) {
+                    onCommandSubmitted?(cmd)
+                }
+                lineBuffer.removeAll(); lineDirty = false
+            case 0x7F, 0x08: // Backspace
+                if !lineBuffer.isEmpty { lineBuffer.removeLast() }
+            case 0x03, 0x15: // Ctrl-C / Ctrl-U verwerfen die Zeile
+                lineBuffer.removeAll(); lineDirty = false
+            case 0x1B, 0x09: // ESC-Sequenzen (Pfeile) und Tab-Vervollständigung
+                lineDirty = true
+            case 0x20...0x7E:
+                lineBuffer.append(b)
+            default:
+                if b >= 0x80 { lineBuffer.append(b) }  // UTF-8-Folgebytes (Umlaute etc.)
+                else { lineDirty = true }              // sonstige Steuerzeichen
+            }
+        }
     }
 
     func sizeChanged(source: TerminalView, newCols: Int, newRows: Int) {

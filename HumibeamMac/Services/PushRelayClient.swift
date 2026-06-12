@@ -1,0 +1,30 @@
+import Foundation
+
+/// Schickt "Claude wartet"-Ereignisse an das Push-Relay auf alpvis.com, das sie als
+/// APNs-Push an Ali's iPhones weiterreicht. Fire-and-forget, niemals blockierend.
+enum PushRelayClient {
+    static var enabled: Bool {
+        get { UserDefaults.standard.bool(forKey: "push.enabled") }
+        set { UserDefaults.standard.set(newValue, forKey: "push.enabled") }
+    }
+    static var baseURL: String {
+        get { UserDefaults.standard.string(forKey: "push.url") ?? "https://alpvis.com/humibeam-push" }
+        set { UserDefaults.standard.set(newValue, forKey: "push.url") }
+    }
+    static var secret: String {
+        get { UserDefaults.standard.string(forKey: "push.secret") ?? "" }
+        set { UserDefaults.standard.set(newValue, forKey: "push.secret") }
+    }
+
+    static func notify(title: String, body: String, host: String) {
+        guard enabled, !secret.isEmpty,
+              let url = URL(string: baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/notify") else { return }
+        var request = URLRequest(url: url, timeoutInterval: 8)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "secret": secret, "title": title, "body": body, "host": host,
+        ])
+        URLSession.shared.dataTask(with: request).resume()
+    }
+}

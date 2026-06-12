@@ -21,11 +21,15 @@ final class SessionManager: NSObject, NSWindowDelegate {
     @ObservationIgnored private var mainWindow: NSWindow?
     @ObservationIgnored private var profilesWindow: NSWindow?
     @ObservationIgnored private var paletteWindow: NSWindow?
+    @ObservationIgnored private var historyPaletteWindow: NSWindow?
+    @ObservationIgnored private var fleetWindow: NSWindow?
+    @ObservationIgnored private var transcriptsWindow: NSWindow?
     @ObservationIgnored private var snippetsWindow: NSWindow?
     @ObservationIgnored private var tipsWindow: NSWindow?
 
     private var anyUtilityWindowOpen: Bool {
         profilesWindow != nil || paletteWindow != nil || snippetsWindow != nil || tipsWindow != nil
+            || historyPaletteWindow != nil
     }
     private var anyWindowOpen: Bool { mainWindow != nil || anyUtilityWindowOpen }
 
@@ -289,6 +293,76 @@ final class SessionManager: NSObject, NSWindowDelegate {
         paletteWindow = nil
     }
 
+    /// ⌘R: durchsuchbarer Befehls-Verlauf, gleiche Präsentation wie die ⌘K-Palette.
+    func toggleCommandHistory() {
+        if historyPaletteWindow != nil { closeCommandHistory(); return }
+        NSApp.setActivationPolicy(.regular)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 380),
+                              styleMask: [.titled, .fullSizeContentView, .closable],
+                              backing: .buffered, defer: false)
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.isMovableByWindowBackground = true
+        window.level = .floating
+        window.backgroundColor = .clear
+        window.isOpaque = false
+        window.hasShadow = true
+        window.contentViewController = NSHostingController(
+            rootView: CommandHistoryPaletteView(shell: shell, onClose: { [weak self] in self?.closeCommandHistory() }))
+        window.isReleasedWhenClosed = false
+        window.delegate = self
+        if let screen = NSScreen.main {
+            let f = screen.visibleFrame
+            window.setFrameTopLeftPoint(NSPoint(x: f.midX - 280, y: f.midY + 200))
+        } else {
+            window.center()
+        }
+        historyPaletteWindow = window
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func closeCommandHistory() {
+        historyPaletteWindow?.close()
+        historyPaletteWindow = nil
+    }
+
+    /// Agenten-Protokolle: archivierte Sitzungs-Transkripte durchsuchen.
+    func openTranscriptsWindow() {
+        if let w = transcriptsWindow {
+            NSApp.setActivationPolicy(.regular); w.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true); return
+        }
+        NSApp.setActivationPolicy(.regular)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 480),
+                              styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        window.title = "Agenten-Protokolle"
+        window.contentViewController = NSHostingController(rootView: TranscriptArchiveView())
+        window.isReleasedWhenClosed = false
+        window.delegate = self
+        window.center()
+        transcriptsWindow = window
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// Fleet-Übersicht: alle Server + Agenten-Status in einem Fenster.
+    func openFleetWindow() {
+        if let w = fleetWindow {
+            NSApp.setActivationPolicy(.regular); w.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true); return
+        }
+        NSApp.setActivationPolicy(.regular)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 720, height: 460),
+                              styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        window.title = "Fleet-Übersicht"
+        window.contentViewController = NSHostingController(rootView: FleetView(shell: shell, sessions: self))
+        window.isReleasedWhenClosed = false
+        window.delegate = self
+        window.center()
+        fleetWindow = window
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     func openSnippetsWindow() {
         if let w = snippetsWindow {
             NSApp.setActivationPolicy(.regular); w.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true); return
@@ -358,6 +432,12 @@ final class SessionManager: NSObject, NSWindowDelegate {
             mainWindow = nil
         } else if window === paletteWindow {
             paletteWindow = nil
+        } else if window === historyPaletteWindow {
+            historyPaletteWindow = nil
+        } else if window === fleetWindow {
+            fleetWindow = nil
+        } else if window === transcriptsWindow {
+            transcriptsWindow = nil
         } else if window === profilesWindow {
             profilesWindow = nil
         } else if window === snippetsWindow {

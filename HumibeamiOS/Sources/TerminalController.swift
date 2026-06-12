@@ -36,6 +36,8 @@ final class TerminalController: NSObject, TerminalViewDelegate, ObservableObject
     private var lastProxy: SSHConnection.ProxyJump?
     private var userInitiatedDisconnect = false
     private var reconnectAttempts = 0
+    /// Wird nach jedem (Re-)Connect als erste Eingabe geschrieben (z.B. tmux-Attach).
+    var startupCommand: String?
     private let maxBackoff: Double = 30
     private var networkAvailable = true
     private var reconnectWorkItem: DispatchWorkItem?
@@ -77,6 +79,9 @@ final class TerminalController: NSObject, TerminalViewDelegate, ObservableObject
                 }
                 session.onClosed = { [weak self] in
                     Task { @MainActor in self?.handleSessionClosed() }
+                }
+                if let startup = self.startupCommand {
+                    session.write(startup + "\n")
                 }
                 self.reconnectAttempts = 0
                 self.status = "verbunden"

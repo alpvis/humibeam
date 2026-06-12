@@ -64,6 +64,15 @@ struct HostEditorView: View {
                     }
                 }
 
+                Section("Sitzung") {
+                    Toggle("Abbruchsicher (tmux)", isOn: Binding(
+                        get: { host.tmuxEnabled },
+                        set: { host.useTmux = $0 }
+                    ))
+                    Text("Die Sitzung läuft am Server in tmux weiter und wird beim Neuverbinden nahtlos fortgesetzt — auch nach WLAN-Wechsel oder App-Neustart. tmux muss am Server installiert sein.")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+
                 Section("Schnellstart (optional)") {
                     HStack {
                         Text("Tastenkürzel")

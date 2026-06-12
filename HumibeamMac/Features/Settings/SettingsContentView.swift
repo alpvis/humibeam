@@ -670,6 +670,12 @@ struct CustomizeSettingsView: View {
                 GeneralQuickTogglesSection(appState: appState)
             }
 
+            // MARK: iPhone-Push (Relay auf alpvis.com)
+            VStack(alignment: .leading, spacing: 10) {
+                SectionLabel(text: "iPhone-Push")
+                PushRelaySettingsSection()
+            }
+
             // MARK: Lokaler Modus
             VStack(alignment: .leading, spacing: 10) {
                 SectionLabel(text: "Sicherer Lokaler Modus")
@@ -984,5 +990,33 @@ struct FlowLayout: Layout {
         }
 
         return (positions, CGSize(width: maxX, height: y + rowHeight))
+    }
+}
+
+// MARK: - iPhone-Push (sendet "Claude wartet" über das Relay auf alpvis.com)
+
+struct PushRelaySettingsSection: View {
+    @State private var enabled = PushRelayClient.enabled
+    @State private var url = PushRelayClient.baseURL
+    @State private var secret = PushRelayClient.secret
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle("\u{201E}Claude wartet\u{201C} aufs iPhone schicken", isOn: $enabled)
+                .toggleStyle(.switch).controlSize(.small)
+                .onChange(of: enabled) { _, v in PushRelayClient.enabled = v }
+
+            if enabled {
+                TextField("Relay-URL", text: $url)
+                    .textFieldStyle(.roundedBorder).font(.system(size: 11))
+                    .onChange(of: url) { _, v in PushRelayClient.baseURL = v }
+                SecureField("Relay-Secret", text: $secret)
+                    .textFieldStyle(.roundedBorder).font(.system(size: 11))
+                    .onChange(of: secret) { _, v in PushRelayClient.secret = v }
+                Text("Secret kommt vom Server (humibeam-push/config.json). Gleiche Werte in der iPhone-App eintragen.")
+                    .font(.system(size: 10)).foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 }

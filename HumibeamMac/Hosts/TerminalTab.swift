@@ -52,6 +52,8 @@ final class TerminalTab: Identifiable {
     var mode: SessionMode = .terminal
     /// Detailed health for the sidebar dot + menu-bar icon (set by HumibeamShell on state changes).
     var health: SessionHealth = .connecting
+    /// Server-Vitalwerte (Load/RAM/Disk/Zombies), per Health-Poll alle 30 s aktualisiert.
+    var stats: ServerStats?
 
     // Per-tab file browser
     var showFileBrowser = false

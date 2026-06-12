@@ -37,7 +37,9 @@ struct Snippet: Identifiable, Codable, Hashable {
 @Observable
 @MainActor
 final class SnippetStore {
-    var snippets: [Snippet] { didSet { save() } }
+    var snippets: [Snippet] { didSet { save(); onChanged?() } }
+    /// Hook für den iCloud-Sync.
+    @ObservationIgnored var onChanged: (() -> Void)?
 
     private static var fileURL: URL {
         let dir = AppSupportPaths.appSupportDirectoryURL

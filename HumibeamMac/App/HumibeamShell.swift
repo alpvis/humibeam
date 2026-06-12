@@ -11,6 +11,8 @@ final class HumibeamShell {
     let knownHosts = KnownHostsStore()
     let snippets = SnippetStore()
     let bookmarks = BookmarkStore()
+    let commandHistory = CommandHistoryStore()
+    let cloudSync = CloudSyncService()
     let network = NetworkMonitor()
 
     var tabs: [TerminalTab] = []
@@ -24,6 +26,32 @@ final class HumibeamShell {
         terminalFontName = d.string(forKey: "terminal.fontName") ?? ""
         if let t = d.string(forKey: "terminal.themeID") { selectedThemeID = t }
         network.onChange = { [weak self] online in self?.handleNetworkChange(online) }
+        healthTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.pollHealth() }
+        }
+        cloudSync.start(shell: self)
+        hostStore.onHostsChangedSync = { [weak self] in self?.cloudSync.scheduleExport() }
+        snippets.onChanged = { [weak self] in self?.cloudSync.scheduleExport() }
+    }
+
+    // MARK: - Server-Gesundheit (Sidebar-Vitalwerte)
+
+    @ObservationIgnored private var healthTimer: Timer?
+
+    private func pollHealth() {
+        for tab in tabs where tab.connected {
+            pollHealth(tab)
+        }
+    }
+
+    func pollHealth(_ tab: TerminalTab) {
+        guard let conn = tab.controller.connection else { return }
+        Task { [weak tab] in
+            guard let (status, out, _) = try? await conn.exec(ServerStats.command), status == 0,
+                  let text = String(data: out, encoding: .utf8),
+                  let stats = ServerStats.parse(text) else { return }
+            tab?.stats = stats
+        }
     }
 
     /// Propagates reachability changes to every session: pause reconnects when offline,
@@ -48,6 +76,7 @@ final class HumibeamShell {
         didSet {
             UserDefaults.standard.set(Double(terminalFontSize), forKey: "terminal.fontSize")
             forEachController { $0.setFont(terminalFont) }
+            cloudSync.scheduleExport()
         }
     }
     /// Leer = System-Monospace (SF Mono).
@@ -55,6 +84,7 @@ final class HumibeamShell {
         didSet {
             UserDefaults.standard.set(terminalFontName, forKey: "terminal.fontName")
             forEachController { $0.setFont(terminalFont) }
+            cloudSync.scheduleExport()
         }
     }
     var terminalFont: NSFont {
@@ -69,6 +99,7 @@ final class HumibeamShell {
         didSet {
             UserDefaults.standard.set(selectedThemeID, forKey: "terminal.themeID")
             let t = TerminalTheme.by(id: selectedThemeID); forEachController { $0.applyTheme(t) }
+            cloudSync.scheduleExport()
         }
     }
     var broadcastInput = false
@@ -120,6 +151,14 @@ final class HumibeamShell {
         let controller = TerminalSessionController(knownHosts: knownHosts)
         configure(controller)
         controller.primeNetwork(network.isOnline)
+        if host.tmuxEnabled {
+            // Stabiler Name pro Host; weitere Tabs zum selben Host bekommen eigene Sitzungen.
+            let existing = tabs.filter { $0.host.id == host.id }.count
+            let name = existing == 0 ? "humibeam" : "humibeam-\(existing + 1)"
+            controller.startupCommand =
+                "command -v tmux >/dev/null 2>&1 && { clear; exec tmux new-session -A -s \(name); } " +
+                "|| echo 'humibeam: tmux ist am Server nicht installiert — normale Sitzung.'"
+        }
         let tab = TerminalTab(host: host, controller: controller)
 
         controller.onStatus = { [weak tab] in
@@ -137,6 +176,7 @@ final class HumibeamShell {
             tab.fileSession?.disconnect()
             tab.fileSession = nil
             Task { await self?.loadInitialBrowserPath(tab) }
+            self?.pollHealth(tab)
         }
         controller.onClosed = { [weak tab] in
             guard let tab else { return }
@@ -154,7 +194,7 @@ final class HumibeamShell {
             tab?.approval = controller?.approval
             if waiting, let tab {
                 Self.postClaudeAlert(tab, title: "Claude wartet auf dich",
-                                     body: "\(tab.host.displayName): Erlaubnis nötig")
+                                     body: "\(tab.host.displayName): Erlaubnis nötig", kind: "approval")
                 // Stufe 3: if the opt-in bridge is active, upgrade the scraped card to exact data.
                 let allowAlways = controller?.approvalAllowAlways ?? false
                 let conn = controller?.connection
@@ -170,6 +210,10 @@ final class HumibeamShell {
         controller.onPathsChange = { [weak tab, weak controller] in
             tab?.recentPaths = controller?.recentPaths ?? []
         }
+        controller.onCommandSubmitted = { [weak self] cmd in
+            self?.commandHistory.record(cmd, host: host.displayName)
+        }
+        controller.archiveLabel = host.displayName
         controller.onClaudeIdle = { [weak tab] in
             if let tab {
                 Self.postClaudeAlert(tab, title: "Claude ist fertig",
@@ -191,9 +235,9 @@ final class HumibeamShell {
         }
     }
 
-    private static func postClaudeAlert(_ tab: TerminalTab, title: String, body: String) {
+    private static func postClaudeAlert(_ tab: TerminalTab, title: String, body: String, kind: String = "info") {
         NotificationCenter.default.post(name: .claudeAlert, object: nil, userInfo: [
-            "sessionID": tab.id, "title": title, "body": body
+            "sessionID": tab.id, "title": title, "body": body, "kind": kind
         ])
     }
 
