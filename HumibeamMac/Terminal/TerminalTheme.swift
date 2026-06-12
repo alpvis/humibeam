@@ -12,6 +12,21 @@ struct TerminalTheme: Identifiable, Hashable {
         NSColor(calibratedRed: CGFloat(r)/255, green: CGFloat(g)/255, blue: CGFloat(b)/255, alpha: 1)
     }
 
+    /// Whether the terminal background reads as dark — drives the whole window chrome
+    /// (titlebar, sidebar, bars) so chrome and terminal form one surface.
+    var isDark: Bool {
+        let c = background.usingColorSpace(.sRGB) ?? background
+        let luminance = 0.299 * c.redComponent + 0.587 * c.greenComponent + 0.114 * c.blueComponent
+        return luminance < 0.5
+    }
+
+    /// Bar color (session toolbar / status bar): the terminal background, lifted a touch for depth.
+    var chrome: NSColor {
+        let base = background.usingColorSpace(.sRGB) ?? background
+        return (isDark ? base.blended(withFraction: 0.08, of: .white)
+                       : base.blended(withFraction: 0.05, of: .black)) ?? base
+    }
+
     static let system = TerminalTheme(
         id: "system", name: "System",
         foreground: .textColor, background: .textBackgroundColor, caret: .selectedControlColor)

@@ -35,7 +35,7 @@ struct MenuBarView: View {
                     BrandMark(size: 30)
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Humibeam")
+                        Text("HUMIBEAM")
                             .font(.system(size: 15, weight: .bold))
                             .foregroundStyle(.primary)
 
@@ -194,8 +194,12 @@ struct MenuBarView: View {
 
     private var sessionHub: some View {
         VStack(spacing: 8) {
+            let count = sessions.activeSessions.count
             hubLaunchRow(icon: "macwindow", title: "Hauptfenster öffnen",
-                         subtitle: "Alle Sitzungen, Profile & Dateien", trailing: "", prominent: true) {
+                         subtitle: count == 0 ? "Alle Sitzungen, Profile & Dateien"
+                                 : count == 1 ? "1 aktive Sitzung"
+                                 : "\(count) aktive Sitzungen",
+                         trailing: "", prominent: true) {
                 sessions.showMainWindow(); dismissPopover()
             }
 
@@ -204,26 +208,27 @@ struct MenuBarView: View {
                 sessions.openLocalSession(); dismissPopover()
             }
 
-            if !sessions.shell.hostStore.hosts.isEmpty {
-                hubSectionLabel("SSH-PROFILE")
-                ForEach(sessions.shell.hostStore.hosts) { host in
-                    hubProfileRow(host)
-                }
-
-                hubSectionLabel("DATEIEN (SFTP)")
-                ForEach(sessions.shell.hostStore.hosts) { host in
-                    hubLaunchRow(icon: "folder.fill", title: host.displayName,
-                                 subtitle: "Dateien übertragen (SFTP)",
-                                 trailing: "", prominent: false) {
-                        sessions.openFileSession(host); dismissPopover()
+            let hosts = sessions.shell.hostStore.hosts
+            if !hosts.isEmpty {
+                hubSectionLabel("SERVER")
+                if hosts.count > 5 {
+                    ScrollView {
+                        VStack(spacing: 8) {
+                            ForEach(hosts) { hubProfileRow($0) }
+                        }
                     }
+                    // ~5,5 Zeilen — die angeschnittene sechste signalisiert Scrollbarkeit.
+                    .frame(maxHeight: 282)
+                } else {
+                    ForEach(hosts) { hubProfileRow($0) }
                 }
             }
 
-            let active = sessions.activeSessions
-            if !active.isEmpty {
-                hubSectionLabel("AKTIVE SITZUNGEN")
-                ForEach(active) { hubActiveRow($0) }
+            // SSH state lives on the server rows above — only local terminals need their own list.
+            let locals = sessions.localActiveSessions
+            if !locals.isEmpty {
+                hubSectionLabel("LOKALE TERMINALS")
+                ForEach(locals) { hubActiveRow($0) }
             }
 
             HStack(spacing: 14) {
@@ -293,18 +298,31 @@ struct MenuBarView: View {
         .buttonStyle(SubtleButtonStyle())
     }
 
-    /// A profile row: tapping the row opens a terminal; the folder button opens the SFTP manager.
+    /// A profile row doubles as the session row: tapping opens (or focuses) the terminal, the
+    /// status dot mirrors the live connection, the folder button opens SFTP, ✕ disconnects.
     private func hubProfileRow(_ host: SSHHost) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: "server.rack")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Color.humiqaIndigo)
-                .frame(width: 20, height: 20)
+        let tab = sessions.shell.tabs.first { $0.host.id == host.id }
+        return HStack(spacing: 10) {
+            ZStack(alignment: .bottomTrailing) {
+                Image(systemName: "server.rack")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.humiqaIndigo)
+                    .frame(width: 20, height: 20)
+                if let tab {
+                    Circle()
+                        .fill(Color(nsColor: tab.health.color))
+                        .frame(width: 7, height: 7)
+                        .overlay(Circle().strokeBorder(Color(nsColor: .windowBackgroundColor), lineWidth: 1))
+                        .offset(x: 2, y: 2)
+                }
+            }
             VStack(alignment: .leading, spacing: 1) {
                 Text(host.displayName)
                     .font(.system(size: 12.5, weight: .semibold))
                     .foregroundStyle(.primary).lineLimit(1)
-                Text("\(host.username)@\(host.host):\(host.port)")
+                Text(tab == nil
+                     ? "\(host.username)@\(host.host):\(host.port)"
+                     : (tab!.connected ? "Verbunden" : tab!.status))
                     .font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 4)
@@ -320,6 +338,15 @@ struct MenuBarView: View {
             }
             .buttonStyle(SubtleButtonStyle())
             .help("Dateien (SFTP)")
+            if let tab {
+                Button { sessions.close(tab.id) } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(SubtleButtonStyle())
+                .help("Sitzung trennen")
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -604,11 +631,11 @@ struct MenuBarView: View {
                 .frame(width: 18, height: 18)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text("Für sauberen Anmeldestart nach /Applications verschieben.")
+                Text("Nach /Applications verschieben")
                     .font(.system(size: 11.5, weight: .semibold))
                     .foregroundStyle(.primary)
 
-                Text("Sonst entstehen leichter doppelte Login-Items oder uneinheitliche Updates.")
+                Text("Hält Anmeldestart und Updates sauber auf einer App-Kopie.")
                     .font(.system(size: 10.5))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -948,7 +975,7 @@ struct MenuBarView: View {
                 NSApplication.shared.terminate(nil)
             }
             .font(.system(size: 10, weight: .medium))
-            .foregroundStyle(.quaternary)
+            .foregroundStyle(.tertiary)
             .buttonStyle(SubtleButtonStyle())
             Spacer()
         }

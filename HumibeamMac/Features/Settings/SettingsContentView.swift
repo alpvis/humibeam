@@ -7,20 +7,20 @@ struct SettingsContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Two-tab segmented picker
             Picker("", selection: $selectedTab) {
                 Text("Anpassen").tag(0)
                 Text("Zugang").tag(1)
+                Text("Update").tag(2)
             }
             .pickerStyle(.segmented)
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
 
             ScrollView {
-                if selectedTab == 0 {
-                    CustomizeSettingsView(appState: appState)
-                } else {
-                    AccessSettingsView(appState: appState)
+                switch selectedTab {
+                case 0: CustomizeSettingsView(appState: appState)
+                case 1: AccessSettingsView(appState: appState)
+                default: UpdateSettingsView(appState: appState)
                 }
             }
         }
@@ -38,6 +38,129 @@ struct SettingsContentView: View {
             return 0
         }
         return 1
+    }
+}
+
+// MARK: - Update Settings (Tab 3: Update)
+
+struct UpdateSettingsView: View {
+    @Bindable var appState: AppState
+
+    private var updater: UpdateService { appState.updater }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+
+            // MARK: Installierte Version
+            VStack(alignment: .leading, spacing: 10) {
+                SectionLabel(text: "Installierte Version")
+
+                HStack(spacing: 10) {
+                    BrandMark(size: 30)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("HUMIBEAM")
+                            .font(.system(size: 13, weight: .bold))
+                        Text("Version \(updater.currentVersion) (Build \(updater.currentBuild))")
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+            }
+
+            // MARK: Update-Status
+            VStack(alignment: .leading, spacing: 10) {
+                SectionLabel(text: "Software-Update")
+
+                if let info = updater.available {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrow.down.circle.fill")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Color.humiqaIndigo)
+                            Text("Version \(info.version) (Build \(info.build)) ist verfügbar")
+                                .font(.system(size: 11.5, weight: .semibold))
+                            Spacer()
+                        }
+                        if !info.notes.isEmpty {
+                            Text(info.notes)
+                                .font(.system(size: 10.5))
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        if updater.isInstalling {
+                            HStack(spacing: 8) {
+                                ProgressView().controlSize(.small).scaleEffect(0.8)
+                                Text(updater.statusText ?? "Installiere …")
+                                    .font(.system(size: 10.5))
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else {
+                            Button("Jetzt installieren") { updater.installAvailableUpdate() }
+                                .controlSize(.small)
+                                .buttonStyle(.borderedProminent)
+                                .tint(Color.humiqaIndigo)
+                        }
+                    }
+                    .padding(10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color.humiqaIndigo.opacity(0.08))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(Color.humiqaIndigo.opacity(0.15), lineWidth: 0.5)
+                    )
+                } else {
+                    HStack(spacing: 8) {
+                        if updater.isChecking {
+                            ProgressView().controlSize(.small).scaleEffect(0.8)
+                            Text("Suche nach Updates …")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.green)
+                            Text(updater.statusText ?? "HUMIBEAM ist auf dem aktuellen Stand.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                    }
+
+                    Button("Nach Updates suchen") {
+                        Task { await updater.check(silent: false) }
+                    }
+                    .controlSize(.small)
+                    .disabled(updater.isChecking)
+                }
+
+                if let error = updater.lastError, updater.available == nil, !updater.isChecking {
+                    Text(error)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.orange)
+                        .lineLimit(2)
+                }
+
+                Text("Updates werden notariell beglaubigt geladen, nach /Applications installiert und die App startet automatisch neu.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Divider()
+
+            HStack {
+                Spacer()
+                Text("© 2026 HUMIQA GmbH. Alle Rechte vorbehalten.")
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 6)
+        .padding(.bottom, 14)
     }
 }
 

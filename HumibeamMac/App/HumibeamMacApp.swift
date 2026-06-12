@@ -104,6 +104,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         NotificationCenter.default.addObserver(
             self, selector: #selector(handleShowSettingsHub), name: .showSettingsHub, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleShowHistoryHub), name: .showHistoryHub, object: nil)
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
 
         DispatchQueue.main.async { [weak self] in
@@ -125,6 +127,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc private func handleShowSettingsHub() {
         if !popover.isShown { showPopover() }
         appState.page = .settings
+    }
+
+    /// Reveal the history/usage hub (menu-bar popover on its history page).
+    @objc private func handleShowHistoryHub() {
+        if !popover.isShown { showPopover() }
+        appState.page = .history
     }
 
     /// "Nach Updates suchen…" — open the main window (so the result is visible in its sidebar) and check.
@@ -355,6 +363,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     private func showPopover() {
         guard let button = statusItem.button else { return }
+        // The popover follows the terminal theme, like the main window — no light popover
+        // next to a dark terminal.
+        popover.appearance = NSAppearance(named: shell.theme.isDark ? .darkAqua : .aqua)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         appState.isPopoverShown = true
         NSApp.activate(ignoringOtherApps: true)

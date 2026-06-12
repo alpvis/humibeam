@@ -4,25 +4,55 @@ import SwiftTerm
 
 // MARK: - Main window (single-window "Studio" layout)
 
-/// humibeam's single main window: a sidebar (profiles + active sessions) on the left and the
-/// selected session on the right, with a Terminal | Dateien | Split switcher in its own toolbar.
+/// humibeam's single main window: a full-width top bar and footer frame the whole window; the
+/// collapsible sidebar (profiles + active sessions) sits *between* them, next to the session —
+/// so the chrome reads as one frame instead of stacked panels.
 struct MainWindowView: View {
     @Bindable var shell: HumibeamShell
     @Bindable var sessions: SessionManager
     @Bindable var updater: UpdateService
     @State private var editingHost: SSHHost?
     @State private var showingEditor = false
+    @State private var isFullscreen = false
+    @AppStorage("humibeam.sidebarVisible") private var sidebarVisible = true
+
+    private var selectedTab: TerminalTab? {
+        guard let id = sessions.selectedSessionID else { return nil }
+        return shell.tabs.first { $0.id == id }
+    }
+
+    private var selectedLocal: LocalSession? {
+        guard let id = sessions.selectedSessionID else { return nil }
+        return sessions.localSessions.first { $0.id == id }
+    }
 
     var body: some View {
-        NavigationSplitView {
-            SidebarView(shell: shell, sessions: sessions, updater: updater,
-                        editHost: { editingHost = $0; showingEditor = true },
-                        newHost: { editingHost = nil; showingEditor = true })
-            .navigationSplitViewColumnWidth(min: 232, ideal: 256, max: 340)
-        } detail: {
-            DetailHost(shell: shell, sessions: sessions,
-                       newHost: { editingHost = nil; showingEditor = true })
+        VStack(spacing: 0) {
+            if !isFullscreen {
+                topBar
+                Divider()
+            }
+            HStack(spacing: 0) {
+                if sidebarVisible && !isFullscreen {
+                    SidebarView(shell: shell, sessions: sessions,
+                                editHost: { editingHost = $0; showingEditor = true })
+                    .frame(width: 248)
+                    .transition(.move(edge: .leading))
+                    Divider()
+                }
+                DetailHost(shell: shell, sessions: sessions,
+                           newHost: { editingHost = nil; showingEditor = true })
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            if !isFullscreen {
+                Divider()
+                bottomBar
+            }
         }
+        .animation(.easeInOut(duration: 0.18), value: sidebarVisible)
+        .background(Color(nsColor: shell.theme.background))
+        .background(WindowChromeStyler(isDark: shell.theme.isDark))
+        .background(FullscreenReader(isFullscreen: $isFullscreen))
         .sheet(isPresented: $showingEditor) {
             HostEditorView(host: editingHost ?? SSHHost()) { saved in
                 if shell.hostStore.hosts.contains(where: { $0.id == saved.id }) {
@@ -33,6 +63,146 @@ struct MainWindowView: View {
             }
         }
     }
+
+    /// Full-width top bar: sidebar toggle + the selected session's controls. Its background runs
+    /// up under the (transparent) titlebar, so titlebar and top bar are one surface.
+    private var topBar: some View {
+        HStack(spacing: 12) {
+            Button { sidebarVisible.toggle() } label: {
+                Image(systemName: "sidebar.left")
+            }
+            .buttonStyle(.borderless)
+            .keyboardShortcut("s", modifiers: [.command, .control])
+            .help("Seitenleiste ein-/ausblenden (⌃⌘S)")
+
+            if let tab = selectedTab {
+                SessionToolbar(shell: shell, sessions: sessions, tab: tab)
+            } else if selectedLocal != nil {
+                HStack(spacing: 8) {
+                    Circle().fill(.green).frame(width: 9, height: 9)
+                    Text("Lokales Terminal").font(.headline)
+                }
+                Spacer()
+            } else {
+                Text("humibeam").font(.headline).foregroundStyle(.secondary)
+                Spacer()
+            }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 9)
+        .background {
+            Color(nsColor: shell.theme.chrome).ignoresSafeArea(.container, edges: .top)
+        }
+    }
+
+    /// Full-width footer: new-session menu + palette/settings on the left, the selected
+    /// session's status in the middle, version/update affordance on the right.
+    private var bottomBar: some View {
+        HStack(spacing: 10) {
+            Menu {
+                Button("Lokales Terminal", systemImage: "apple.terminal") { sessions.openLocalSession() }
+                if !shell.hostStore.hosts.isEmpty {
+                    Divider()
+                    Section("Verbinden") {
+                        ForEach(shell.hostStore.hosts) { host in
+                            Button(host.displayName) { sessions.openSSHSession(host) }
+                        }
+                    }
+                }
+                Divider()
+                Button("Neues Profil…", systemImage: "plus") { editingHost = nil; showingEditor = true }
+            } label: {
+                Label("Neu", systemImage: "plus.circle.fill")
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+
+            Button { sessions.toggleCommandPalette() } label: { Image(systemName: "command") }
+                .buttonStyle(.borderless)
+                .help("Befehls-Palette (⌘K)")
+
+            Button { sessions.openSettingsHub() } label: { Image(systemName: "gearshape") }
+                .buttonStyle(.borderless)
+                .help("Einstellungen")
+
+            statusArea
+
+            Spacer()
+
+            updateArea
+        }
+        .padding(.horizontal, 12).padding(.vertical, 6)
+        .background(Color(nsColor: shell.theme.chrome))
+    }
+
+    @ViewBuilder private var statusArea: some View {
+        if let tab = selectedTab {
+            HStack(spacing: 7) {
+                Circle().fill(Color(nsColor: tab.health.color)).frame(width: 8, height: 8)
+                Text(tab.status).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                if shell.broadcastInput {
+                    Label("Broadcast", systemImage: "dot.radiowaves.left.and.right")
+                        .font(.caption2).foregroundStyle(.orange)
+                }
+            }
+            .padding(.leading, 6)
+        } else if selectedLocal != nil {
+            HStack(spacing: 7) {
+                Circle().fill(.green).frame(width: 8, height: 8)
+                Text("Lokales Terminal — Mac-Shell").font(.caption).foregroundStyle(.secondary)
+            }
+            .padding(.leading, 6)
+        }
+    }
+
+    @ViewBuilder private var updateArea: some View {
+        if let info = updater.available {
+            Button { updater.installAvailableUpdate() } label: {
+                HStack(spacing: 6) {
+                    if updater.isInstalling { ProgressView().controlSize(.small).scaleEffect(0.7) }
+                    else { Image(systemName: "arrow.down.circle.fill") }
+                    Text(updater.isInstalling ? (updater.statusText ?? "Installiere…")
+                                              : "Update auf \(info.version) installieren")
+                        .font(.caption).fontWeight(.medium)
+                }
+                .foregroundStyle(Color.accentColor)
+            }
+            .buttonStyle(.borderless).disabled(updater.isInstalling)
+            .help(info.notes)
+        } else {
+            HStack(spacing: 8) {
+                Text(updater.statusText ?? "v\(updater.currentVersion) (Build \(updater.currentBuild))")
+                    .font(.caption2).foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail)
+                if updater.isChecking {
+                    ProgressView().controlSize(.small).scaleEffect(0.6)
+                } else {
+                    Button("Nach Updates suchen") { Task { await updater.check(silent: false) } }
+                        .buttonStyle(.borderless).font(.caption2).foregroundStyle(.secondary)
+                        .help("Prüft auf eine neuere Version")
+                }
+            }
+        }
+    }
+}
+
+/// Pins the hosting window's appearance to the terminal theme: a dark theme gets a fully dark
+/// window (titlebar, sidebar vibrancy, bars), a light theme a light one — instead of system-light
+/// chrome stacked around a black terminal.
+private struct WindowChromeStyler: NSViewRepresentable {
+    let isDark: Bool
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: .zero)
+        DispatchQueue.main.async { apply(to: view.window) }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async { apply(to: nsView.window) }
+    }
+
+    private func apply(to window: NSWindow?) {
+        window?.appearance = NSAppearance(named: isDark ? .darkAqua : .aqua)
+    }
 }
 
 // MARK: - Sidebar
@@ -40,9 +210,7 @@ struct MainWindowView: View {
 struct SidebarView: View {
     @Bindable var shell: HumibeamShell
     @Bindable var sessions: SessionManager
-    @Bindable var updater: UpdateService
     var editHost: (SSHHost) -> Void
-    var newHost: () -> Void
 
     var body: some View {
         List {
@@ -80,85 +248,8 @@ struct SidebarView: View {
             }
         }
         .listStyle(.sidebar)
-        .safeAreaInset(edge: .bottom) {
-            VStack(spacing: 0) {
-                updateRow
-                bottomBar
-            }
-        }
-    }
-
-    /// Always-visible installed version + "search for updates" / install affordance.
-    @ViewBuilder private var updateRow: some View {
-        if let info = updater.available {
-            Button { updater.installAvailableUpdate() } label: {
-                HStack(spacing: 6) {
-                    if updater.isInstalling { ProgressView().controlSize(.small).scaleEffect(0.7) }
-                    else { Image(systemName: "arrow.down.circle.fill") }
-                    Text(updater.isInstalling ? (updater.statusText ?? "Installiere…")
-                                              : "Update auf \(info.version) installieren")
-                        .font(.caption).fontWeight(.medium)
-                    Spacer()
-                }
-                .foregroundStyle(Color.accentColor)
-            }
-            .buttonStyle(.borderless).disabled(updater.isInstalling)
-            .padding(.horizontal, 12).padding(.vertical, 6)
-            .background(Color.accentColor.opacity(0.12))
-            .help(info.notes)
-        } else {
-            HStack(spacing: 6) {
-                Text(updater.statusText ?? "humibeam v\(updater.currentVersion) (Build \(updater.currentBuild))")
-                    .font(.caption2).foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail)
-                Spacer()
-                if updater.isChecking {
-                    ProgressView().controlSize(.small).scaleEffect(0.6)
-                } else {
-                    Button("Nach Updates suchen") { Task { await updater.check(silent: false) } }
-                        .buttonStyle(.borderless).font(.caption2).foregroundStyle(.secondary)
-                        .help("Prüft auf eine neuere Version")
-                }
-            }
-            .padding(.horizontal, 12).padding(.vertical, 4)
-        }
-    }
-
-    private var bottomBar: some View {
-        HStack(spacing: 8) {
-            Menu {
-                Button("Lokales Terminal", systemImage: "apple.terminal") { sessions.openLocalSession() }
-                if !shell.hostStore.hosts.isEmpty {
-                    Divider()
-                    Section("Verbinden") {
-                        ForEach(shell.hostStore.hosts) { host in
-                            Button(host.displayName) { sessions.openSSHSession(host) }
-                        }
-                    }
-                }
-                Divider()
-                Button("Neues Profil…", systemImage: "plus") { newHost() }
-            } label: {
-                Label("Neu", systemImage: "plus.circle.fill")
-            }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-
-            Spacer()
-
-            Button { sessions.toggleCommandPalette() } label: {
-                Image(systemName: "command")
-            }
-            .buttonStyle(.borderless)
-            .help("Befehls-Palette (⌘K)")
-
-            Button { sessions.openSettingsHub() } label: {
-                Image(systemName: "gearshape")
-            }
-            .buttonStyle(.borderless)
-            .help("Einstellungen")
-        }
-        .padding(.horizontal, 12).padding(.vertical, 8)
-        .background(.bar)
+        .scrollContentBackground(.hidden)
+        .background(Color(nsColor: shell.theme.chrome).opacity(0.5))
     }
 }
 
@@ -210,7 +301,7 @@ private struct DetailHost: View {
             SessionDetailView(shell: shell, sessions: sessions, tab: tab).id(tab.id)
         } else if let id = sessions.selectedSessionID,
                   let local = sessions.localSessions.first(where: { $0.id == id }) {
-            LocalDetailView(session: local).id(local.id)
+            LocalDetailView(session: local, theme: shell.theme).id(local.id)
         } else {
             EmptyStateView(shell: shell, sessions: sessions, newHost: newHost)
         }
@@ -254,14 +345,9 @@ private struct SessionDetailView: View {
     @Bindable var shell: HumibeamShell
     @Bindable var sessions: SessionManager
     @Bindable var tab: TerminalTab
-    @State private var isFullscreen = false
 
     var body: some View {
         VStack(spacing: 0) {
-            if !isFullscreen {
-                SessionToolbar(shell: shell, sessions: sessions, tab: tab)
-                Divider()
-            }
             if tab.searchVisible {
                 SearchBar(tab: tab); Divider()
             }
@@ -274,10 +360,8 @@ private struct SessionDetailView: View {
                 Divider()
             }
             content
-            if !isFullscreen { statusBar }
         }
-        .background(Color.black)
-        .background(FullscreenReader(isFullscreen: $isFullscreen))
+        .background(Color(nsColor: shell.theme.background))
         .onChange(of: tab.mode) { _, mode in handleModeChange(mode) }
         .sheet(isPresented: $tab.showAIPanel) { AIPanel(tab: tab) }
         .sheet(isPresented: $tab.showEditor) { RemoteEditor(shell: shell, tab: tab) }
@@ -316,19 +400,6 @@ private struct SessionDetailView: View {
         case .terminal:
             if tab.splitController != nil { shell.toggleSplit(tab) }
         }
-    }
-
-    private var statusBar: some View {
-        HStack(spacing: 8) {
-            Circle().fill(Color(nsColor: tab.health.color)).frame(width: 8, height: 8)
-            Text(tab.status).font(.caption).foregroundStyle(.secondary)
-            Spacer()
-            if shell.broadcastInput {
-                Label("Broadcast", systemImage: "dot.radiowaves.left.and.right")
-                    .font(.caption2).foregroundStyle(.orange)
-            }
-        }
-        .padding(.horizontal, 10).padding(.vertical, 5).background(.bar)
     }
 }
 
@@ -698,8 +769,6 @@ private struct SessionToolbar: View {
             }
             .buttonStyle(.borderless)
         }
-        .padding(.horizontal, 14).padding(.vertical, 9)
-        .background(.bar)
         .alert("Was soll der Befehl tun?", isPresented: $showSuggest) {
             TextField("z.B. alle .log-Dateien finden", text: $tab.aiSuggestIntent)
             Button("Vorschlagen") { Task { await shell.suggestCommand(tab, intent: tab.aiSuggestIntent) } }
@@ -835,22 +904,11 @@ private struct FilesPane: View {
 
 private struct LocalDetailView: View {
     @Bindable var session: LocalSession
-    @State private var isFullscreen = false
+    let theme: TerminalTheme
     var body: some View {
-        VStack(spacing: 0) {
-            LocalTerminalRepresentable(session: session)
-                .padding(10).frame(minWidth: 480, minHeight: 300)
-            if !isFullscreen {
-                HStack(spacing: 8) {
-                    Circle().fill(.green).frame(width: 8, height: 8)
-                    Text("Lokales Terminal — Mac-Shell").font(.caption).foregroundStyle(.secondary)
-                    Spacer()
-                }
-                .padding(.horizontal, 10).padding(.vertical, 5).background(.bar)
-            }
-        }
-        .background(Color.black)
-        .background(FullscreenReader(isFullscreen: $isFullscreen))
+        LocalTerminalRepresentable(session: session)
+            .padding(10).frame(minWidth: 480, minHeight: 300)
+            .background(Color(nsColor: theme.background))
     }
 }
 

@@ -663,6 +663,8 @@ extension Notification.Name {
     static let manageSnippets = Notification.Name("manageSnippets")
     /// Open the settings hub (menu-bar popover on the settings page).
     static let showSettingsHub = Notification.Name("showSettingsHub")
+    /// Open the history/usage hub (menu-bar popover on the history page).
+    static let showHistoryHub = Notification.Name("showHistoryHub")
 }
 
 private struct PasteTarget {

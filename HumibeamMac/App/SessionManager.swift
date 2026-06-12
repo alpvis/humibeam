@@ -50,7 +50,9 @@ final class SessionManager: NSObject, NSWindowDelegate {
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered, defer: false)
         window.title = "humibeam"
-        window.titlebarAppearsTransparent = false
+        // Transparent titlebar + fullSizeContentView: the content's background runs up under the
+        // title, so titlebar, session toolbar and terminal read as one surface (no stacked bars).
+        window.titlebarAppearsTransparent = true
         window.contentMinSize = NSSize(width: 760, height: 440)
         window.contentViewController = NSHostingController(
             rootView: MainWindowView(shell: shell, sessions: self, updater: updater))
@@ -67,6 +69,11 @@ final class SessionManager: NSObject, NSWindowDelegate {
     /// Opens (or focuses) the settings hub — handled by the AppDelegate's menu-bar popover.
     func openSettingsHub() {
         NotificationCenter.default.post(name: .showSettingsHub, object: nil)
+    }
+
+    /// Opens (or focuses) the history/usage hub — handled by the AppDelegate's menu-bar popover.
+    func openHistoryHub() {
+        NotificationCenter.default.post(name: .showHistoryHub, object: nil)
     }
 
     // MARK: - Open / select sessions
@@ -143,16 +150,19 @@ final class SessionManager: NSObject, NSWindowDelegate {
         let health: SessionHealth
     }
 
-    var activeSessions: [ActiveSession] {
-        let loc = localSessions.map {
+    var localActiveSessions: [ActiveSession] {
+        localSessions.map {
             ActiveSession(id: $0.id, title: $0.title, connected: true,
                           symbol: "apple.terminal", health: .connected)
         }
+    }
+
+    var activeSessions: [ActiveSession] {
         let ssh = shell.tabs.map {
             ActiveSession(id: $0.id, title: $0.title, connected: $0.connected,
                           symbol: "server.rack", health: $0.health)
         }
-        return ssh + loc
+        return ssh + localActiveSessions
     }
 
     var hasOpenSessions: Bool { !activeSessions.isEmpty }
