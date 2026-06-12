@@ -11,6 +11,11 @@ struct TerminalHostView: UIViewRepresentable {
         if !(view.inputAccessoryView is TerminalKeyAccessory) {
             view.inputAccessoryView = TerminalKeyAccessory(controller: controller)
         }
+        // Pinch-to-Zoom: Schriftgröße geht über das AppModel, damit alle Sitzungen
+        // mitziehen und der Wert (synct übers Konto) gespeichert wird.
+        view.onPinchFontSize = { size in
+            MainActor.assumeIsolated { AppModel.shared?.fontSize = Double(size) }
+        }
         return view
     }
 
@@ -19,12 +24,14 @@ struct TerminalHostView: UIViewRepresentable {
     }
 }
 
-/// Tasten-Leiste über der iOS-Tastatur: Esc, Tab, ⇧Tab (Claude-Modus), Ctrl-C, Pfeile, Sonderzeichen.
+/// Tasten-Leiste über der iOS-Tastatur: Esc, Tab, ⇧Tab (Claude-Modus), Ctrl-C, Pfeile, Sonderzeichen,
+/// Einfügen aus der Zwischenablage und Auswahl-Modus (Gesten wählen Text aus statt an tmux zu gehen).
 final class TerminalKeyAccessory: UIInputView {
     private weak var controller: TerminalController?
     private var ctrlActive = false
     private var ctrlButton: UIButton?
     private var micButton: UIButton?
+    private var selectModeButton: UIButton?
 
     init(controller: TerminalController) {
         self.controller = controller
@@ -46,6 +53,8 @@ final class TerminalKeyAccessory: UIInputView {
     private func buildButtons() {
         let keys: [Key] = [
             Key(label: "mic.fill", isSymbol: true) { $0.toggleDictation() },
+            Key(label: "doc.on.clipboard", isSymbol: true) { $0.pasteClipboard() },
+            Key(label: "text.cursor", isSymbol: true) { $0.toggleSelectMode() },
             Key(label: "esc", isSymbol: false) { $0.send([0x1b]) },
             Key(label: "arrow.right.to.line", isSymbol: true) { $0.send([0x09]) },                 // Tab
             Key(label: "arrow.left.to.line", isSymbol: true) { $0.send([0x1b, 0x5b, 0x5a]) },     // ⇧Tab (CSI Z)
@@ -84,7 +93,8 @@ final class TerminalKeyAccessory: UIInputView {
                 key.action(self)
             })
             if i == 0 { micButton = button }
-            if i == 4 { ctrlButton = button }
+            if i == 2 { selectModeButton = button }
+            if i == 6 { ctrlButton = button }
             stack.addArrangedSubview(button)
         }
 
@@ -138,6 +148,26 @@ final class TerminalKeyAccessory: UIInputView {
 
     private func dismissKeyboard() {
         controller?.terminalView.resignFirstResponder()
+    }
+
+    /// Zwischenablage direkt in die Sitzung tippen (SwiftTerms paste respektiert Bracketed-Paste).
+    private func pasteClipboard() {
+        controller?.terminalView.paste(nil)
+    }
+
+    /// Auswahl-Modus: Mouse-Reporting aus, damit Tipp-Gesten Text auswählen statt als
+    /// Maus-Events an tmux/Claude zu gehen. Zweiter Tap schaltet zurück.
+    private func toggleSelectMode() {
+        guard let view = controller?.terminalView else { return }
+        view.allowMouseReporting.toggle()
+        let selecting = !view.allowMouseReporting
+        var config: UIButton.Configuration = selecting ? .filled() : .gray()
+        if selecting { config.baseBackgroundColor = .systemCyan }
+        config.cornerStyle = .medium
+        config.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 9, bottom: 6, trailing: 9)
+        config.image = UIImage(systemName: "text.cursor",
+                               withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .medium))
+        selectModeButton?.configuration = config
     }
 
     /// Sprach-Diktat: Tap startet die Aufnahme (Button wird rot), zweiter Tap stoppt,

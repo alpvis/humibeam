@@ -32,8 +32,24 @@ struct SSHHost: Identifiable, Codable, Hashable {
     var proxyJumpHostID: UUID? = nil
     /// Sitzung in tmux starten: überlebt Abbrüche und App-Neustarts (Optional → alte Profile bleiben lesbar).
     var useTmux: Bool? = nil
+    /// Eigener Befehl nach dem Verbinden (z. B. `tmux attach -t claudes`) — ersetzt den tmux-Automatik-Befehl.
+    var startupCommand: String? = nil
+    /// $TERM für die PTY-Anforderung; nil/leer = xterm-256color.
+    var terminalType: String? = nil
+    /// Backspace sendet ^H statt ^? (manche ältere Systeme erwarten das).
+    var backspaceCtrlH: Bool? = nil
 
     var tmuxEnabled: Bool { useTmux ?? false }
+    /// Effektiver Startbefehl: getrimmt, leer = keiner.
+    var customStartupCommand: String? {
+        let cmd = (startupCommand ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return cmd.isEmpty ? nil : cmd
+    }
+    /// Effektives $TERM: getrimmt, leer = xterm-256color.
+    var effectiveTerminalType: String {
+        let t = (terminalType ?? "").trimmingCharacters(in: .whitespaces)
+        return t.isEmpty ? "xterm-256color" : t
+    }
 
     var displayName: String {
         let n = name.trimmingCharacters(in: .whitespaces)

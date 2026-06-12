@@ -12,6 +12,8 @@ final class TerminalSessionController: NSObject, TerminalViewDelegate {
     private(set) var ptySession: PTYSession?
     /// Wird nach jedem (Re-)Connect als erste Eingabe in die Shell geschrieben (z.B. tmux-Attach).
     var startupCommand: String?
+    /// $TERM für die PTY-Anforderung (Profil „Erweitert"); nil = xterm-256color.
+    var termType: String?
 
     // MARK: - Sitzungs-Protokoll (vollständiges Transkript auf Platte, durchsuchbar)
 
@@ -126,7 +128,8 @@ final class TerminalSessionController: NSObject, TerminalViewDelegate {
         Task {
             do {
                 try await conn.connect()
-                let session = try await conn.openShell(cols: cols, rows: rows)
+                let session = try await conn.openShell(term: self.termType ?? "xterm-256color",
+                                                       cols: cols, rows: rows)
                 self.ptySession = session
 
                 session.onOutput = { [weak self] bytes in

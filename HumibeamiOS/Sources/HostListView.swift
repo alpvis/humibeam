@@ -270,6 +270,8 @@ struct SettingsView: View {
     @State private var openAIKey = KeychainService.load(key: .openAIAPIKey) ?? ""
     @AppStorage("lock.enabled") private var lockEnabled = false
     @AppStorage("dictation.local") private var localDictation = false
+    @AppStorage("display.keepAwake") private var keepAwake = false
+    @AppStorage("keyboard.autoShow") private var keyboardAutoShow = true
 
     var body: some View {
         @Bindable var model = model
@@ -301,6 +303,18 @@ struct SettingsView: View {
                                 .tint(model.fontSize == size ? .cyan : .secondary)
                         }
                     }
+                }
+
+                Section {
+                    Toggle("Bildschirm nicht automatisch sperren", isOn: $keepAwake)
+                        .onChange(of: keepAwake) { _, on in
+                            UIApplication.shared.isIdleTimerDisabled = on
+                        }
+                    Toggle("Tastatur automatisch einblenden", isOn: $keyboardAutoShow)
+                } header: {
+                    Text("Terminal")
+                } footer: {
+                    Text("Schriftgröße geht auch per Zwei-Finger-Zoom direkt im Terminal. Auswahl-Modus und Einfügen findest du in der Tastenleiste.")
                 }
 
                 Section {

@@ -40,6 +40,8 @@ final class TerminalController: NSObject, TerminalViewDelegate, ObservableObject
     private var reconnectAttempts = 0
     /// Wird nach jedem (Re-)Connect als erste Eingabe geschrieben (z.B. tmux-Attach).
     var startupCommand: String?
+    /// $TERM für die PTY-Anforderung (Profil „Erweitert"); nil = xterm-256color.
+    var termType: String?
     private let maxBackoff: Double = 30
     private var networkAvailable = true
     private var reconnectWorkItem: DispatchWorkItem?
@@ -70,7 +72,8 @@ final class TerminalController: NSObject, TerminalViewDelegate, ObservableObject
         Task {
             do {
                 try await conn.connect()
-                let session = try await conn.openShell(cols: cols, rows: rows)
+                let session = try await conn.openShell(term: self.termType ?? "xterm-256color",
+                                                       cols: cols, rows: rows)
                 self.ptySession = session
 
                 session.onOutput = { [weak self] bytes in
@@ -427,6 +430,91 @@ final class TerminalController: NSObject, TerminalViewDelegate, ObservableObject
     func rangeChanged(source: TerminalView, startY: Int, endY: Int) { /* unused */ }
 }
 
-/// TerminalView subclass (Haken für künftige Anpassungen; Accessory wird via
-/// SwiftTerms setzbarem `inputAccessoryView` angehängt).
-final class BeamTerminalView: SwiftTerm.TerminalView {}
+/// TerminalView subclass: ersetzt SwiftTerms totes UIMenuController-Kontextmenü (zeigt seit
+/// iOS 16 nichts mehr an) durch ein UIEditMenuInteraction-Menü — Kopieren/Einfügen/Auswählen
+/// bei Doppeltipp und langem Drücken. Dazu Pinch-to-Zoom für die Schriftgröße.
+final class BeamTerminalView: SwiftTerm.TerminalView, UIEditMenuInteractionDelegate {
+    private var editMenu: UIEditMenuInteraction?
+    private var menuPoint: CGPoint = .zero
+    /// Schriftgröße beim Beginn der Pinch-Geste (Zoom rechnet relativ dazu).
+    private var pinchBaseSize: CGFloat = 0
+    /// Wird vom Host gesetzt; bekommt die neue Schriftgröße beim Pinch-Zoom.
+    var onPinchFontSize: ((CGFloat) -> Void)?
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        guard window != nil, editMenu == nil else { return }
+        let interaction = UIEditMenuInteraction(delegate: self)
+        addInteraction(interaction)
+        editMenu = interaction
+        // SwiftTerms eigene Gesten weiterverwenden: zusätzliche Targets statt eigener
+        // Recognizer, damit sich nichts gegenseitig blockiert. Der lange Druck setzt in
+        // SwiftTerm `lastLongSelect` (Wort-Auswahl), der Doppeltipp wählt das Wort aus.
+        for recognizer in gestureRecognizers ?? [] {
+            if recognizer is UILongPressGestureRecognizer {
+                recognizer.addTarget(self, action: #selector(beamLongPress(_:)))
+            } else if let tap = recognizer as? UITapGestureRecognizer, tap.numberOfTapsRequired == 2 {
+                tap.addTarget(self, action: #selector(beamDoubleTap(_:)))
+            }
+        }
+        let pinch = UIPinchGestureRecognizer(target: self, action: #selector(beamPinch(_:)))
+        addGestureRecognizer(pinch)
+    }
+
+    @objc private func beamLongPress(_ gesture: UILongPressGestureRecognizer) {
+        guard gesture.state == .began else { return }
+        presentEditMenu(at: gesture.location(in: self))
+    }
+
+    @objc private func beamDoubleTap(_ gesture: UITapGestureRecognizer) {
+        guard gesture.state == .ended else { return }
+        let point = gesture.location(in: self)
+        // SwiftTerms Handler wählt das Wort aus; Menü erst danach zeigen.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.canPerformAction(#selector(self.copy(_:)), withSender: nil) else { return }
+            self.presentEditMenu(at: point)
+        }
+    }
+
+    private func presentEditMenu(at point: CGPoint) {
+        menuPoint = point
+        editMenu?.presentEditMenu(with: UIEditMenuConfiguration(identifier: nil, sourcePoint: point))
+    }
+
+    func editMenuInteraction(_ interaction: UIEditMenuInteraction,
+                             menuFor configuration: UIEditMenuConfiguration,
+                             suggestedActions: [UIMenuElement]) -> UIMenu? {
+        var actions: [UIAction] = []
+        let hasSelection = canPerformAction(#selector(copy(_:)), withSender: nil)
+        if hasSelection {
+            actions.append(UIAction(title: "Kopieren") { [weak self] _ in self?.copy(nil) })
+        } else {
+            // `select(nil)` wählt das Wort an der Stelle des langen Drucks (lastLongSelect).
+            actions.append(UIAction(title: "Auswählen") { [weak self] _ in
+                self?.select(nil)
+                DispatchQueue.main.async { self?.presentEditMenu(at: self?.menuPoint ?? .zero) }
+            })
+        }
+        if UIPasteboard.general.hasStrings {
+            actions.append(UIAction(title: "Einfügen") { [weak self] _ in self?.paste(nil) })
+        }
+        actions.append(UIAction(title: "Alles auswählen") { [weak self] _ in
+            self?.selectAll(nil)
+            DispatchQueue.main.async { self?.presentEditMenu(at: self?.menuPoint ?? .zero) }
+        })
+        return UIMenu(children: actions)
+    }
+
+    @objc private func beamPinch(_ gesture: UIPinchGestureRecognizer) {
+        switch gesture.state {
+        case .began:
+            pinchBaseSize = font.pointSize
+        case .changed:
+            let size = (pinchBaseSize * gesture.scale).rounded()
+            let clamped = min(max(size, 9), 28)
+            if clamped != font.pointSize { onPinchFontSize?(clamped) }
+        default:
+            break
+        }
+    }
+}

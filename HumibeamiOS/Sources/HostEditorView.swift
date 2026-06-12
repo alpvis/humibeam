@@ -81,8 +81,29 @@ struct HostEditorView: View {
                         get: { host.tmuxEnabled },
                         set: { host.useTmux = $0 }
                     ))
+                    TextField("Befehl nach dem Verbinden (optional)", text: Binding(
+                        get: { host.startupCommand ?? "" },
+                        set: { host.startupCommand = $0 }
+                    ))
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .font(.system(.body, design: .monospaced))
                 } footer: {
-                    Text("Sitzung läuft am Server in tmux weiter und wird beim Neuverbinden nahtlos fortgesetzt. tmux muss am Server installiert sein.")
+                    Text("tmux: Sitzung läuft am Server weiter und wird beim Neuverbinden nahtlos fortgesetzt. Ein eigener Befehl (z. B. „tmux attach -t claudes\u{201C}) wird direkt nach dem Verbinden ausgeführt und ersetzt die tmux-Automatik.")
+                }
+
+                Section("Erweitert") {
+                    TextField("Terminal-Typ ($TERM)", text: Binding(
+                        get: { host.terminalType ?? "" },
+                        set: { host.terminalType = $0 }
+                    ), prompt: Text("xterm-256color"))
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .font(.system(.body, design: .monospaced))
+                    Toggle("Backspace sendet ^H", isOn: Binding(
+                        get: { host.backspaceCtrlH ?? false },
+                        set: { host.backspaceCtrlH = $0 }
+                    ))
                 }
 
                 if model.hostStore.hosts.contains(where: { $0.id != host.id }) {

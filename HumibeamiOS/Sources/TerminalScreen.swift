@@ -173,7 +173,9 @@ struct TerminalScreen: View {
             if !controller.isConnected && controller.connection == nil {
                 model.connect(session)
             }
-            _ = controller.terminalView.becomeFirstResponder()
+            if UserDefaults.standard.object(forKey: "keyboard.autoShow") as? Bool ?? true {
+                _ = controller.terminalView.becomeFirstResponder()
+            }
         }
         // Handoff zum Mac: dieselbe Sitzung (tmux) dort weiterführen.
         .userActivity("app.humibeam.session") { activity in

@@ -214,7 +214,10 @@ final class HumibeamShell {
         let controller = TerminalSessionController(knownHosts: knownHosts)
         configure(controller)
         controller.primeNetwork(network.isOnline)
-        if host.tmuxEnabled {
+        if let custom = host.customStartupCommand {
+            // Eigener Befehl (z. B. `tmux attach -t claudes`) hat Vorrang vor der tmux-Automatik.
+            controller.startupCommand = custom
+        } else if host.tmuxEnabled {
             // Stabiler Name pro Host; weitere Tabs zum selben Host bekommen eigene Sitzungen.
             let existing = tabs.filter { $0.host.id == host.id }.count
             let name = existing == 0 ? "humibeam" : "humibeam-\(existing + 1)"
@@ -222,6 +225,8 @@ final class HumibeamShell {
                 "command -v tmux >/dev/null 2>&1 && { clear; exec tmux new-session -A -s \(name); } " +
                 "|| echo 'humibeam: tmux ist am Server nicht installiert — normale Sitzung.'"
         }
+        controller.termType = host.effectiveTerminalType
+        controller.terminalView.backspaceSendsControlH = host.backspaceCtrlH ?? false
         let tab = TerminalTab(host: host, controller: controller)
 
         controller.onStatus = { [weak tab] in

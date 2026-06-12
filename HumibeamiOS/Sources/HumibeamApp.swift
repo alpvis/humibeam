@@ -12,6 +12,10 @@ struct HumibeamApp: App {
             HostListView()
                 .environment(model)
                 .appLock()   // Face-ID-Schutz (Einstellungen → Sicherheit)
+                .onAppear {
+                    UIApplication.shared.isIdleTimerDisabled =
+                        UserDefaults.standard.bool(forKey: "display.keepAwake")
+                }
         }
     }
 }
@@ -297,16 +301,21 @@ final class AppModel {
         for session in sessions.filter({ $0.host.id == hostID }) { closeSession(session) }
     }
 
-    /// Verbindet einen Controller mit den Credentials des Hosts (inkl. ProxyJump, tmux).
+    /// Verbindet einen Controller mit den Credentials des Hosts (inkl. ProxyJump, tmux, Startbefehl).
     func connect(_ session: TerminalSession) {
         let host = session.host
-        if host.tmuxEnabled {
+        if let custom = host.customStartupCommand {
+            // Eigener Befehl (z. B. `tmux attach -t claudes`) hat Vorrang vor der tmux-Automatik.
+            session.controller.startupCommand = custom
+        } else if host.tmuxEnabled {
             let index = sessions.filter { $0.host.id == host.id }.firstIndex { $0.id == session.id } ?? 0
             let name = index == 0 ? "humibeam" : "humibeam-\(index + 1)"
             session.controller.startupCommand =
                 "command -v tmux >/dev/null 2>&1 && { clear; exec tmux new-session -A -s \(name); } " +
                 "|| echo 'humibeam: tmux ist am Server nicht installiert — normale Sitzung.'"
         }
+        session.controller.termType = host.effectiveTerminalType
+        session.controller.terminalView.backspaceSendsControlH = host.backspaceCtrlH ?? false
         do {
             let creds = try hostStore.credentials(for: host)
             var proxy: SSHConnection.ProxyJump?

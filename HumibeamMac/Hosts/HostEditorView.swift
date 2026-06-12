@@ -79,6 +79,25 @@ struct HostEditorView: View {
                     ))
                     Text("Die Sitzung läuft am Server in tmux weiter und wird beim Neuverbinden nahtlos fortgesetzt — auch nach WLAN-Wechsel oder App-Neustart. tmux muss am Server installiert sein.")
                         .font(.caption2).foregroundStyle(.secondary)
+                    TextField("Befehl nach dem Verbinden (optional)", text: Binding(
+                        get: { host.startupCommand ?? "" },
+                        set: { host.startupCommand = $0 }
+                    ))
+                    .font(.system(.body, design: .monospaced))
+                    Text("Wird direkt nach dem Verbinden ausgeführt (z. B. tmux attach -t claudes) und ersetzt die tmux-Automatik.")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+
+                Section("Erweitert") {
+                    TextField("Terminal-Typ ($TERM)", text: Binding(
+                        get: { host.terminalType ?? "" },
+                        set: { host.terminalType = $0 }
+                    ), prompt: Text("xterm-256color"))
+                    .font(.system(.body, design: .monospaced))
+                    Toggle("Backspace sendet ^H", isOn: Binding(
+                        get: { host.backspaceCtrlH ?? false },
+                        set: { host.backspaceCtrlH = $0 }
+                    ))
                 }
 
                 Section("Schnellstart (optional)") {
