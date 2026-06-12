@@ -43,10 +43,13 @@
 - [x] **P18** On-Device-Diktat: SFSpeechRecognizer-Pfad in DictationService
       (Einstellungen → „Lokal transkribieren"), Whisper bleibt Alternative
 
-### Welle 3 — KI-Cockpit  ☐
-- [ ] **P5** Agent-Inbox: wartende Approvals über alle Sessions (Mac-Fenster + iOS-Tab)
-- [ ] **P19** KI-Knöpfe iOS: Ausgabe erklären / Fehler beheben / Befehl vorschlagen (LLMService teilen)
-- [ ] **P20** Claude-Status Plus: liest/editiert/baut/wartet als Live-Status (Liste + Statuszeile)
+### Welle 3 — KI-Cockpit  ✅
+- [x] **P5** Agent-Inbox: iOS-Sektion „Wartet auf Freigabe" (Inline Erlauben/Ablehnen, Tap öffnet
+      Sitzung); Mac: Dock-Badge mit Anzahl wartender Freigaben (FleetView hatte Karten schon)
+- [x] **P19** KI-Knöpfe iOS: AIPanel (erklären/beheben/vorschlagen), LLMService gesplittet →
+      LLMCore.swift geteilt (humitext-Funktionen bleiben Mac-only in LLMService.swift)
+- [x] **P20** Claude-Status Plus: ClaudeActivity.swift (geteilt) parst „liest X / bearbeitet Y /
+      führt aus: Z / wartet" — iOS-Statuszeile + Sitzungsliste
 
 ### Welle 4 — Push & Glanz  ☐
 - [ ] **P7** Actionable Push: Erlauben/Immer/Ablehnen aus der iOS-Mitteilung; Rückkanal über

@@ -19,6 +19,8 @@ final class TerminalController: NSObject, TerminalViewDelegate, ObservableObject
     @Published private(set) var claudeDetected = false
     @Published private(set) var approval: ClaudeApproval?
     @Published private(set) var recentPaths: [String] = []
+    /// „Claude-Status Plus": was der Agent gerade tut (liest/bearbeitet/führt aus/wartet).
+    @Published private(set) var activity = ClaudeStatus(kind: .idle, detail: nil)
 
     /// Rolling, ANSI-stripped transcript of recent output. Capped.
     private(set) var transcript = ""
@@ -250,6 +252,11 @@ final class TerminalController: NSObject, TerminalViewDelegate, ObservableObject
         detectApprovalPrompt()
         extractRecentPaths()
         detectClaudeIdle()
+        if claudeDetected {
+            let status = ClaudeStatus.parse(transcriptTail: String(transcript.suffix(2000)),
+                                            busy: claudeBusy, awaitingApproval: approval != nil)
+            if status != activity { activity = status }
+        }
     }
 
     private func detectClaudeIdle() {

@@ -217,7 +217,8 @@ final class HumibeamShell {
             tab.fileSession = nil
         }
         controller.onClaudeDetected = { [weak tab] in tab?.claudeDetected = true }
-        controller.onApprovalChange = { [weak tab, weak controller] in
+        controller.onApprovalChange = { [weak self, weak tab, weak controller] in
+            defer { self?.updateDockBadge() }
             let waiting = controller?.awaitingApproval ?? false
             tab?.awaitingApproval = waiting
             tab?.approvalAllowAlways = controller?.approvalAllowAlways ?? false
@@ -276,6 +277,13 @@ final class HumibeamShell {
         tab.splitController?.disconnect()
         tabs.removeAll { $0.id == tab.id }
         if selectedTabID == tab.id { selectedTabID = tabs.last?.id }
+        updateDockBadge()
+    }
+
+    /// Agent-Inbox im Dock: Anzahl der Sitzungen, die auf eine Freigabe warten.
+    private func updateDockBadge() {
+        let waiting = tabs.filter { $0.awaitingApproval }.count
+        NSApp.dockTile.badgeLabel = waiting > 0 ? "\(waiting)" : nil
     }
 
     func closeSelectedTab() {

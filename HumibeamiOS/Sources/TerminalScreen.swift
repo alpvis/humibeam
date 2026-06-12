@@ -16,6 +16,10 @@ struct TerminalScreen: View {
     @State private var showsForwards = false
     @State private var photoItem: PhotosPickerItem?
     @State private var dictationError: String?
+    @StateObject private var aiPanel = AIPanelModel()
+    @State private var showsAIPanel = false
+    @State private var suggestIntentActive = false
+    @State private var suggestIntent = ""
 
     var body: some View {
         if let session = model.session(withID: sessionID) {
@@ -77,6 +81,19 @@ struct TerminalScreen: View {
                     .keyboardShortcut("d", modifiers: [.command, .shift])
 
                 Menu {
+                    Section("KI") {
+                        Button {
+                            showsAIPanel = true
+                            Task { await aiPanel.explain(controller) }
+                        } label: { Label("Ausgabe erklären", systemImage: "questionmark.bubble") }
+                        Button {
+                            showsAIPanel = true
+                            Task { await aiPanel.fix(controller) }
+                        } label: { Label("Fehler beheben", systemImage: "stethoscope") }
+                        Button {
+                            suggestIntentActive = true
+                        } label: { Label("Befehl vorschlagen…", systemImage: "wand.and.stars") }
+                    }
                     Button {
                         showsFiles = true
                     } label: { Label("Dateien…", systemImage: "folder") }
@@ -128,6 +145,19 @@ struct TerminalScreen: View {
         }
         .sheet(isPresented: $showsForwards) {
             ForwardsSheet(session: session)
+        }
+        .sheet(isPresented: $showsAIPanel) {
+            AIPanelSheet(panel: aiPanel)
+        }
+        .alert("Was soll der Befehl tun?", isPresented: $suggestIntentActive) {
+            TextField("z. B. alle Logs der letzten Stunde", text: $suggestIntent)
+            Button("Vorschlagen") {
+                showsAIPanel = true
+                let intent = suggestIntent
+                suggestIntent = ""
+                Task { await aiPanel.suggest(controller, intent: intent) }
+            }
+            Button("Abbrechen", role: .cancel) {}
         }
         .onChange(of: photoItem) { _, item in
             guard let item else { return }
@@ -214,14 +244,24 @@ struct TerminalScreen: View {
                 .foregroundStyle(.secondary)
             Spacer()
             if controller.claudeDetected {
-                Label("Claude", systemImage: "sparkles")
+                // Claude-Status Plus: liest/bearbeitet/führt aus/wartet — live aus dem Stream.
+                Label(controller.activity.label, systemImage: statusSymbol(controller.activity))
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.cyan)
+                    .foregroundStyle(controller.activity.kind == .waiting ? .orange : .cyan)
+                    .lineLimit(1)
             }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(.bar)
+    }
+
+    private func statusSymbol(_ status: ClaudeStatus) -> String {
+        switch status.kind {
+        case .waiting: return "hand.raised.fill"
+        case .busy: return "sparkles"
+        case .idle: return "checkmark.seal"
+        }
     }
 }
 

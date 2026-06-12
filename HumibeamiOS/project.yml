@@ -38,6 +38,8 @@ targets:
       - path: ../HumibeamMac/Terminal/GitDiffService.swift
       - path: ../HumibeamMac/Terminal/ClaudeBridge.swift
       - path: ../HumibeamMac/Terminal/CommandHistoryStore.swift
+      - path: ../HumibeamMac/Terminal/ClaudeActivity.swift
+      - path: ../HumibeamMac/Services/LLMCore.swift
       - path: ../HumibeamMac/Hosts/HostStore.swift
       - path: ../HumibeamMac/Hosts/SnippetStore.swift
       - path: ../HumibeamMac/Hosts/BookmarkStore.swift

@@ -24,6 +24,19 @@ struct HostListView: View {
                     }
                 } else {
                     List {
+                        // Agent-Inbox: alle Sitzungen, in denen Claude auf eine Freigabe wartet.
+                        let waiting = model.sessions.filter { $0.controller.approval != nil }
+                        if !waiting.isEmpty {
+                            Section {
+                                ForEach(waiting) { session in
+                                    InboxRow(session: session) { path = [session.id] }
+                                }
+                            } header: {
+                                Label("Wartet auf Freigabe", systemImage: "hand.raised.fill")
+                                    .foregroundStyle(.orange)
+                            }
+                        }
+
                         ForEach(model.hostStore.hosts) { host in
                             Button {
                                 path = [model.primarySession(for: host).id]
@@ -58,7 +71,11 @@ struct HostListView: View {
                                             Text(session.title)
                                             Spacer()
                                             if session.controller.claudeDetected {
-                                                Image(systemName: "sparkles").foregroundStyle(.cyan)
+                                                Text(session.controller.activity.label)
+                                                    .font(.caption2)
+                                                    .foregroundStyle(session.controller.activity.kind == .waiting
+                                                                     ? .orange : .cyan)
+                                                    .lineLimit(1)
                                             }
                                         }
                                     }
@@ -115,6 +132,45 @@ struct HostListView: View {
                 #endif
             }
         }
+    }
+}
+
+/// Inbox-Zeile: Was will der Agent? Erlauben/Ablehnen direkt hier, Tap öffnet die Sitzung.
+private struct InboxRow: View {
+    let session: TerminalSession
+    let open: () -> Void
+
+    var body: some View {
+        let approval = session.controller.approval
+        VStack(alignment: .leading, spacing: 6) {
+            Button(action: open) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Image(systemName: approval?.action.symbol ?? "questionmark")
+                            .foregroundStyle(approval?.looksDangerous == true ? .red : .cyan)
+                        Text(session.title).font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                    }
+                    if let approval, !approval.question.isEmpty {
+                        Text(approval.question)
+                            .font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                    }
+                }
+            }
+            HStack(spacing: 8) {
+                Button {
+                    session.controller.approve()
+                } label: { Label("Erlauben", systemImage: "checkmark").frame(maxWidth: .infinity) }
+                    .buttonStyle(.borderedProminent)
+                    .tint(approval?.looksDangerous == true ? .red : .green)
+                Button {
+                    session.controller.deny()
+                } label: { Label("Ablehnen", systemImage: "xmark").frame(maxWidth: .infinity) }
+                    .buttonStyle(.bordered)
+            }
+            .controlSize(.small)
+        }
+        .padding(.vertical, 2)
     }
 }
 
