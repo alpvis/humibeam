@@ -874,7 +874,7 @@ struct MenuBarView: View {
 
             Divider()
 
-            SettingsContentView(appState: appState)
+            SettingsContentView(appState: appState, shell: sessions.shell)
 
             Spacer(minLength: 0)
 

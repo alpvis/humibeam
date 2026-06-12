@@ -3,10 +3,14 @@ import Security
 
 enum KeychainKey: String, CaseIterable, Codable {
     case openAIAPIKey = "openAIAPIKey"
+    case humibeamAccountToken = "humibeamAccountToken"
+    case humibeamAccountEncKey = "humibeamAccountEncKey"
 
     var label: String {
         switch self {
         case .openAIAPIKey: return "OpenAI API Key"
+        case .humibeamAccountToken: return "Humibeam-Konto (Sitzung)"
+        case .humibeamAccountEncKey: return "Humibeam-Konto (Sync-Schlüssel)"
         }
     }
 }

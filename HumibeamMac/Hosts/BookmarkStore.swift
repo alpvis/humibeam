@@ -11,7 +11,9 @@ struct PathBookmark: Identifiable, Codable, Hashable {
 @Observable
 @MainActor
 final class BookmarkStore {
-    var bookmarks: [PathBookmark] { didSet { save() } }
+    var bookmarks: [PathBookmark] { didSet { save(); onChanged?() } }
+    /// Hook für den Konto-Sync.
+    @ObservationIgnored var onChanged: (() -> Void)?
 
     private static var fileURL: URL {
         let dir = AppSupportPaths.appSupportDirectoryURL

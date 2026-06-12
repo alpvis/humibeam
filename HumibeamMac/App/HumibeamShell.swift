@@ -13,6 +13,7 @@ final class HumibeamShell {
     let bookmarks = BookmarkStore()
     let commandHistory = CommandHistoryStore()
     let cloudSync = CloudSyncService()
+    let accountSync = AccountSyncService()
     let network = NetworkMonitor()
 
     var tabs: [TerminalTab] = []
@@ -30,8 +31,34 @@ final class HumibeamShell {
             Task { @MainActor in self?.pollHealth() }
         }
         cloudSync.start(shell: self)
-        hostStore.onHostsChangedSync = { [weak self] in self?.cloudSync.scheduleExport() }
-        snippets.onChanged = { [weak self] in self?.cloudSync.scheduleExport() }
+        hostStore.onHostsChangedSync = { [weak self] in
+            self?.cloudSync.scheduleExport(); self?.accountSync.scheduleExport()
+        }
+        snippets.onChanged = { [weak self] in
+            self?.cloudSync.scheduleExport(); self?.accountSync.scheduleExport()
+        }
+        bookmarks.onChanged = { [weak self] in self?.accountSync.scheduleExport() }
+
+        // Humibeam-Konto: E2E-verschlüsselter Sync über alle Geräte (Macs + iOS).
+        accountSync.buildPayload = { [weak self] in
+            guard let self else { return AccountSyncPayload() }
+            return AccountSyncPayload(hosts: hostStore.hosts,
+                                      snippets: snippets.snippets,
+                                      bookmarks: bookmarks.bookmarks,
+                                      fontName: terminalFontName,
+                                      fontSize: Double(terminalFontSize),
+                                      themeID: selectedThemeID)
+        }
+        accountSync.applyPayload = { [weak self] payload in
+            guard let self else { return }
+            if let h = payload.hosts { hostStore.hosts = h }
+            if let s = payload.snippets { snippets.snippets = s }
+            if let b = payload.bookmarks { bookmarks.bookmarks = b }
+            if let f = payload.fontName { terminalFontName = f }
+            if let s = payload.fontSize { terminalFontSize = CGFloat(s) }
+            if let t = payload.themeID { selectedThemeID = t }
+        }
+        accountSync.start()
     }
 
     // MARK: - Server-Gesundheit (Sidebar-Vitalwerte)
@@ -77,6 +104,7 @@ final class HumibeamShell {
             UserDefaults.standard.set(Double(terminalFontSize), forKey: "terminal.fontSize")
             forEachController { $0.setFont(terminalFont) }
             cloudSync.scheduleExport()
+            accountSync.scheduleExport()
         }
     }
     /// Leer = System-Monospace (SF Mono).
@@ -85,6 +113,7 @@ final class HumibeamShell {
             UserDefaults.standard.set(terminalFontName, forKey: "terminal.fontName")
             forEachController { $0.setFont(terminalFont) }
             cloudSync.scheduleExport()
+            accountSync.scheduleExport()
         }
     }
     var terminalFont: NSFont {
@@ -100,6 +129,7 @@ final class HumibeamShell {
             UserDefaults.standard.set(selectedThemeID, forKey: "terminal.themeID")
             let t = TerminalTheme.by(id: selectedThemeID); forEachController { $0.applyTheme(t) }
             cloudSync.scheduleExport()
+            accountSync.scheduleExport()
         }
     }
     var broadcastInput = false

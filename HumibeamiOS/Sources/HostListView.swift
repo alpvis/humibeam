@@ -106,6 +106,7 @@ struct SettingsView: View {
         @Bindable var model = model
         NavigationStack {
             Form {
+                AccountSection(account: model.accountSync)
                 Section("Darstellung") {
                     Picker("Theme", selection: $model.themeID) {
                         ForEach(TerminalTheme.all) { theme in

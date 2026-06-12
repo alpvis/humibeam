@@ -74,6 +74,7 @@ final class AppModel {
     let network = NetworkMonitor()
     let snippets = SnippetStore()
     let commandHistory = CommandHistoryStore()
+    let accountSync = AccountSyncService()
 
     @ObservationIgnored private(set) var controllers: [UUID: TerminalController] = [:]
     /// Hosts mit lebender Session (für den grünen Punkt in der Liste).
@@ -83,12 +84,14 @@ final class AppModel {
         didSet {
             UserDefaults.standard.set(themeID, forKey: "themeID")
             controllers.values.forEach { $0.applyTheme(theme) }
+            accountSync.scheduleExport()
         }
     }
     var fontSize: Double {
         didSet {
             UserDefaults.standard.set(fontSize, forKey: "fontSize")
             controllers.values.forEach { $0.setFontSize(fontSize) }
+            accountSync.scheduleExport()
         }
     }
 
@@ -103,6 +106,27 @@ final class AppModel {
                 online ? controller.networkBecameAvailable() : controller.networkBecameUnavailable()
             }
         }
+
+        // Humibeam-Konto: E2E-verschlüsselter Sync mit den Macs. iOS kennt fontName/bookmarks
+        // (noch) nicht → bleiben nil und werden vom letzten Server-Stand übernommen.
+        hostStore.onHostsChangedSync = { [weak self] in self?.accountSync.scheduleExport() }
+        snippets.onChanged = { [weak self] in self?.accountSync.scheduleExport() }
+        accountSync.buildPayload = { [weak self] in
+            guard let self else { return AccountSyncPayload() }
+            return AccountSyncPayload(hosts: hostStore.hosts,
+                                      snippets: snippets.snippets,
+                                      fontSize: fontSize,
+                                      themeID: themeID)
+        }
+        accountSync.applyPayload = { [weak self] payload in
+            guard let self else { return }
+            if let h = payload.hosts { hostStore.hosts = h }
+            if let s = payload.snippets { snippets.snippets = s }
+            // Nur Themes übernehmen, die es auf iOS auch gibt (IDs können je Plattform abweichen).
+            if let t = payload.themeID, TerminalTheme.all.contains(where: { $0.id == t }) { themeID = t }
+            if let f = payload.fontSize { fontSize = f }
+        }
+        accountSync.start()
     }
 
     /// Liefert die lebende Session für einen Host oder erzeugt eine neue.

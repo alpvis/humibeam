@@ -3,6 +3,7 @@ import AppKit
 
 struct SettingsContentView: View {
     @Bindable var appState: AppState
+    var shell: HumibeamShell? = nil
     @State private var selectedTab = 0
 
     var body: some View {
@@ -13,6 +14,7 @@ struct SettingsContentView: View {
                 Text("Update").tag(2)
                 Text("Verlauf").tag(3)
                 Text("Nutzung").tag(4)
+                if shell != nil { Text("Konto").tag(5) }
             }
             .pickerStyle(.segmented)
             .controlSize(.small)
@@ -25,6 +27,12 @@ struct SettingsContentView: View {
                 case 1: AccessSettingsView(appState: appState)
                 case 3: HistorySettingsView(appState: appState)
                 case 4: UsageSettingsView(appState: appState)
+                case 5:
+                    if let shell {
+                        AccountSettingsView(account: shell.accountSync)
+                    } else {
+                        UpdateSettingsView(appState: appState)
+                    }
                 default: UpdateSettingsView(appState: appState)
                 }
             }

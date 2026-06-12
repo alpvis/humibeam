@@ -40,6 +40,8 @@ targets:
       - path: ../HumibeamMac/Terminal/CommandHistoryStore.swift
       - path: ../HumibeamMac/Hosts/HostStore.swift
       - path: ../HumibeamMac/Hosts/SnippetStore.swift
+      - path: ../HumibeamMac/Hosts/BookmarkStore.swift
+      - path: ../HumibeamMac/Services/AccountSync
       - path: ../HumibeamMac/Services/KeychainService.swift
       - path: ../HumibeamMac/Services/AppSupportPaths.swift
       - path: ../HumibeamMac/Services/NetworkMonitor.swift
