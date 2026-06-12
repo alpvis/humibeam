@@ -65,29 +65,41 @@ sleep 1
 sudo systemctl is-active humibeam-sync humibeam-beam || die "Dienst nicht aktiv (journalctl -u humibeam-sync prüfen)"
 curl -fsS "http://$GW:8798/health" >/dev/null && echo "   sync /health ok" || echo "   ⚠ sync /health (noch) nicht erreichbar"
 
-# ---------- 3) Firewall für den Beam-Tunnel ----------
+# ---------- 3) Firewall ----------
+# 8797: Beam-Tunnel von außen (iPhone direkt). 8798: Sync NUR vom Docker-Subnetz
+# (nginx-Container erreicht den Host-Dienst) — exakt wie die vorhandene 8799-Regel fürs Push-Relay.
 if command -v ufw >/dev/null && sudo ufw status 2>/dev/null | grep -q "Status: active"; then
-  sudo ufw allow 8797/tcp >/dev/null 2>&1 && say "ufw: 8797/tcp freigegeben"
+  sudo ufw allow 8797/tcp >/dev/null 2>&1 && say "ufw: 8797/tcp (extern) freigegeben"
+  sudo ufw allow from 172.18.0.0/16 to any port 8798 proto tcp >/dev/null 2>&1 && \
+    sudo ufw allow from 172.17.0.0/16 to any port 8798 proto tcp >/dev/null 2>&1 && \
+    say "ufw: 8798/tcp vom Docker-Subnetz freigegeben"
 fi
 
 # ---------- 4) nginx: /humibeam-sync/ neben /humibeam-push/ ----------
+# WICHTIG: nginx-active.conf ist als Datei in den Container gemountet (read-only). `sed -i`
+# würde die Inode ersetzen → der Container sähe die Änderung NIE. Deshalb inode-erhaltend
+# editieren (`cat tmp > datei` truncatet die bestehende Inode), dann reload (kein Neustart nötig).
 if [ -f "$NGINX_CONF" ]; then
   if grep -q "humibeam-sync" "$NGINX_CONF"; then
     say "nginx: /humibeam-sync/ bereits vorhanden"
   elif grep -q "location /humibeam-push/" "$NGINX_CONF"; then
-    say "nginx: /humibeam-sync/ ergänzen (Backup + Test + Rollback)"
-    sudo cp -a "$NGINX_CONF" "$NGINX_CONF.bak.$(date +%s)"
-    sudo sed -i "/location \/humibeam-push\//a\\        location /humibeam-sync/ { proxy_pass http://$GW:8798/; proxy_set_header Host \$host; proxy_set_header X-Forwarded-For \$remote_addr; client_max_body_size 8m; }" "$NGINX_CONF"
-    if sudo docker exec "$NGINX_CT" nginx -t >/dev/null 2>&1; then
+    say "nginx: /humibeam-sync/ ergänzen (inode-erhaltend, Test + Rollback)"
+    TS=$(date +%s)
+    sudo cp -a "$NGINX_CONF" "$NGINX_CONF.bak.$TS"
+    LINE="        location /humibeam-sync/ { proxy_pass http://$GW:8798/; proxy_set_header Host \$host; proxy_set_header X-Forwarded-For \$remote_addr; client_max_body_size 8m; }"
+    sudo sed "/location \/humibeam-push\//a\\$LINE" "$NGINX_CONF" > /tmp/nginx-active.new
+    sudo cp /tmp/nginx-active.new /tmp/nginx-active.test
+    sudo docker cp /tmp/nginx-active.test "$NGINX_CT":/tmp/nginxtest.conf
+    if sudo docker exec "$NGINX_CT" nginx -t -c /tmp/nginxtest.conf >/dev/null 2>&1; then
+      sudo bash -c "cat /tmp/nginx-active.new > '$NGINX_CONF'"   # inode bleibt erhalten
       sudo docker exec "$NGINX_CT" nginx -s reload && echo "   nginx neu geladen ✓"
     else
-      LAST=$(ls -t "$NGINX_CONF".bak.* | head -1)
-      sudo cp -a "$LAST" "$NGINX_CONF"
-      die "nginx -t schlug fehl → zurückgerollt ($LAST). Bitte manuell prüfen."
+      die "nginx -t schlug für die neue Config fehl — nichts geändert (Backup: $NGINX_CONF.bak.$TS)."
     fi
+    sudo docker exec "$NGINX_CT" rm -f /tmp/nginxtest.conf 2>/dev/null
+    sudo rm -f /tmp/nginx-active.new /tmp/nginx-active.test
   else
-    echo "   ⚠ Kein /humibeam-push/-Block gefunden — bitte /humibeam-sync/ manuell ergänzen:"
-    echo "     location /humibeam-sync/ { proxy_pass http://$GW:8798/; proxy_set_header Host \$host; client_max_body_size 8m; }"
+    echo "   ⚠ Kein /humibeam-push/-Block gefunden — bitte /humibeam-sync/ manuell ergänzen."
   fi
 else
   echo "   ⚠ $NGINX_CONF nicht gefunden — nginx-Location bitte manuell setzen."
