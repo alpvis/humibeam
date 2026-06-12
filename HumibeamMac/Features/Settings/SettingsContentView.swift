@@ -11,8 +11,11 @@ struct SettingsContentView: View {
                 Text("Anpassen").tag(0)
                 Text("Zugang").tag(1)
                 Text("Update").tag(2)
+                Text("Verlauf").tag(3)
+                Text("Nutzung").tag(4)
             }
             .pickerStyle(.segmented)
+            .controlSize(.small)
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
 
@@ -20,13 +23,26 @@ struct SettingsContentView: View {
                 switch selectedTab {
                 case 0: CustomizeSettingsView(appState: appState)
                 case 1: AccessSettingsView(appState: appState)
+                case 3: HistorySettingsView(appState: appState)
+                case 4: UsageSettingsView(appState: appState)
                 default: UpdateSettingsView(appState: appState)
                 }
             }
         }
         .onAppear {
             appState.refreshAccessibilityPermission()
-            selectedTab = defaultTabSelection
+            if let requested = appState.settingsInitialTab {
+                selectedTab = requested
+                appState.settingsInitialTab = nil
+            } else {
+                selectedTab = defaultTabSelection
+            }
+        }
+        .onChange(of: appState.settingsInitialTab) { _, requested in
+            if let requested {
+                selectedTab = requested
+                appState.settingsInitialTab = nil
+            }
         }
     }
 
@@ -648,6 +664,12 @@ struct CustomizeSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
 
+            // MARK: Allgemein (früher Extras-Seite)
+            VStack(alignment: .leading, spacing: 10) {
+                SectionLabel(text: "Allgemein")
+                GeneralQuickTogglesSection(appState: appState)
+            }
+
             // MARK: Lokaler Modus
             VStack(alignment: .leading, spacing: 10) {
                 SectionLabel(text: "Sicherer Lokaler Modus")
@@ -747,6 +769,12 @@ struct CustomizeSettingsView: View {
                     }
                     .pickerStyle(.segmented)
                 }
+            }
+
+            // MARK: Stil-Profile (früher Extras-Seite)
+            VStack(alignment: .leading, spacing: 10) {
+                SectionLabel(text: "Stil-Profile")
+                StyleProfilesEditor(appState: appState)
             }
 
             // MARK: Humibeam+

@@ -79,7 +79,7 @@ final class SessionManager: NSObject, NSWindowDelegate {
     // MARK: - Open / select sessions
 
     func openLocalSession() {
-        let session = LocalSession(fontSize: shell.terminalFontSize, theme: shell.theme)
+        let session = LocalSession(font: shell.terminalFont, theme: shell.theme)
         localSessions.append(session)
         showMainWindow()
         select(session.id)

@@ -13,10 +13,10 @@ final class LocalSession: Identifiable {
     @ObservationIgnored let terminalView: LocalProcessTerminalView
     @ObservationIgnored weak var window: NSWindow?
 
-    init(fontSize: CGFloat, theme: TerminalTheme) {
+    init(font: NSFont, theme: TerminalTheme) {
         let tv = LocalProcessTerminalView(frame: NSRect(x: 0, y: 0, width: 820, height: 500))
         tv.configureNativeColors()
-        tv.font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
+        tv.font = font
         tv.nativeForegroundColor = theme.foreground
         tv.nativeBackgroundColor = theme.background
         tv.caretColor = theme.caret

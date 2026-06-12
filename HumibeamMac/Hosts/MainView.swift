@@ -783,9 +783,19 @@ private struct SessionToolbar: View {
 
     private var overflowMenu: some View {
         Menu {
-            Menu("Schriftgröße") {
+            Menu("Schriftgröße (\(Int(shell.terminalFontSize)) pt)") {
                 Button("Größer") { shell.terminalFontSize = min(28, shell.terminalFontSize + 1) }
                 Button("Kleiner") { shell.terminalFontSize = max(9, shell.terminalFontSize - 1) }
+                Divider()
+                ForEach([11, 12, 13, 14, 16, 18, 21], id: \.self) { size in
+                    Button("\(size) pt") { shell.terminalFontSize = CGFloat(size) }
+                }
+            }
+            Picker("Schriftart", selection: $shell.terminalFontName) {
+                Text("System (SF Mono)").tag("")
+                ForEach(HumibeamShell.availableMonospaceFamilies, id: \.self) { family in
+                    Text(family).tag(family)
+                }
             }
             Picker("Farbschema", selection: $shell.selectedThemeID) {
                 ForEach(TerminalTheme.all) { Text($0.name).tag($0.id) }

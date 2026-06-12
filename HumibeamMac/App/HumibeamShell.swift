@@ -17,6 +17,12 @@ final class HumibeamShell {
     var selectedTabID: UUID?
 
     init() {
+        let d = UserDefaults.standard
+        if d.object(forKey: "terminal.fontSize") != nil {
+            terminalFontSize = CGFloat(d.double(forKey: "terminal.fontSize"))
+        }
+        terminalFontName = d.string(forKey: "terminal.fontName") ?? ""
+        if let t = d.string(forKey: "terminal.themeID") { selectedThemeID = t }
         network.onChange = { [weak self] online in self?.handleNetworkChange(online) }
     }
 
@@ -39,10 +45,31 @@ final class HumibeamShell {
     }
 
     var terminalFontSize: CGFloat = 13 {
-        didSet { forEachController { $0.setFontSize(terminalFontSize) } }
+        didSet {
+            UserDefaults.standard.set(Double(terminalFontSize), forKey: "terminal.fontSize")
+            forEachController { $0.setFont(terminalFont) }
+        }
     }
+    /// Leer = System-Monospace (SF Mono).
+    var terminalFontName: String = "" {
+        didSet {
+            UserDefaults.standard.set(terminalFontName, forKey: "terminal.fontName")
+            forEachController { $0.setFont(terminalFont) }
+        }
+    }
+    var terminalFont: NSFont {
+        if !terminalFontName.isEmpty, let f = NSFont(name: terminalFontName, size: terminalFontSize) { return f }
+        return .monospacedSystemFont(ofSize: terminalFontSize, weight: .regular)
+    }
+    /// Alle installierten Festbreiten-Schriften (für den Schriftart-Picker).
+    static let availableMonospaceFamilies: [String] = NSFontManager.shared.availableFontFamilies
+        .filter { NSFont(name: $0, size: 13)?.isFixedPitch == true }
+        .sorted()
     var selectedThemeID: String = "black" {
-        didSet { let t = TerminalTheme.by(id: selectedThemeID); forEachController { $0.applyTheme(t) } }
+        didSet {
+            UserDefaults.standard.set(selectedThemeID, forKey: "terminal.themeID")
+            let t = TerminalTheme.by(id: selectedThemeID); forEachController { $0.applyTheme(t) }
+        }
     }
     var broadcastInput = false
     var forwards: [ActiveForward] = []
@@ -78,7 +105,7 @@ final class HumibeamShell {
     }
 
     private func configure(_ controller: TerminalSessionController) {
-        controller.setFontSize(terminalFontSize)
+        controller.setFont(terminalFont)
         controller.applyTheme(theme)
         controller.onUserInput = { [weak self, weak controller] bytes in
             guard let self, let controller else { return }

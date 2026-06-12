@@ -17,8 +17,6 @@ struct MenuBarView: View {
                 settingsPage
             case .workflow:
                 workflowPage
-            case .history:
-                ExtrasPageView(appState: appState)
             }
         }
         .frame(width: 340)
@@ -52,7 +50,8 @@ struct MenuBarView: View {
                     Spacer()
 
                     Button {
-                        appState.page = .history
+                        appState.settingsInitialTab = 3
+                        appState.page = .settings
                     } label: {
                         Image(systemName: "clock.arrow.circlepath")
                             .font(.system(size: 13, weight: .medium))

@@ -135,127 +135,15 @@ final class UsageTracker {
     }
 }
 
-// MARK: - Extras Page (Verlauf, Nutzung, Schnelleinstellungen)
+// MARK: - Stil-Profile (Einstellungen → Anpassen)
 
-struct ExtrasPageView: View {
+struct StyleProfilesEditor: View {
     @Bindable var appState: AppState
     @State private var editingProfileID: String?
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack {
-                Button {
-                    appState.page = .main
-                } label: {
-                    HStack(spacing: 3) {
-                        Image(systemName: "chevron.left").font(.system(size: 10, weight: .semibold))
-                        Text("Zur\u{00FC}ck").font(.system(size: 12))
-                    }
-                    .foregroundStyle(.secondary)
-                }
-                .buttonStyle(SubtleButtonStyle())
-                Spacer()
-                Text("Verlauf & Nutzung").font(.system(size: 12, weight: .semibold))
-                Spacer()
-                Color.clear.frame(width: 52, height: 1)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-
-            Divider()
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    usageCard
-                    updateSection
-                    quickToggles
-                    profilesSection
-                    vocabularySection
-                    historySection
-                }
-                .padding(16)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var updateSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Image(systemName: "arrow.triangle.2.circlepath")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.humiqaIndigo).frame(width: 18)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Version \(appState.updater.currentVersion)")
-                        .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(.primary)
-                    if let s = appState.updater.statusText {
-                        Text(s).font(.system(size: 10)).foregroundStyle(.secondary)
-                            .lineLimit(2).fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                Spacer()
-                if appState.updater.isChecking {
-                    ProgressView().controlSize(.small).scaleEffect(0.7)
-                } else {
-                    Button("Pr\u{00FC}fen") {
-                        Task { await appState.updater.check(silent: false) }
-                    }
-                    .font(.system(size: 10.5)).buttonStyle(SubtleButtonStyle())
-                    .foregroundStyle(Color.humiqaIndigo)
-                }
-            }
-
-            if let info = appState.updater.available {
-                Button {
-                    appState.updater.installAvailableUpdate()
-                } label: {
-                    HStack {
-                        Image(systemName: "arrow.down.circle.fill")
-                        Text("Update \(info.version) installieren").fontWeight(.semibold)
-                    }
-                    .font(.system(size: 11.5))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 7)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.humiqaIndigo.opacity(0.12)))
-                    .foregroundStyle(Color.humiqaIndigo)
-                }
-                .buttonStyle(SubtleButtonStyle())
-                .disabled(appState.updater.isInstalling)
-            }
-        }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.primary.opacity(0.035))
-        )
-    }
-
-    // MARK: Prompt-Profile (Feature 2)
-
-    private var vocabularyBinding: Binding<String> {
-        Binding(
-            get: { appState.textImprovementSettings.customTerms.joined(separator: ", ") },
-            set: { newValue in
-                appState.textImprovementSettings.customTerms = newValue
-                    .split(separator: ",")
-                    .map { $0.trimmingCharacters(in: .whitespaces) }
-                    .filter { !$0.isEmpty }
-            }
-        )
-    }
-
-    @ViewBuilder
-    private var vocabularySection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("EIGENE BEGRIFFE").font(.system(size: 9.5, weight: .semibold)).foregroundStyle(.secondary)
-            Text("Komma-getrennt. Diese Namen/Begriffe werden immer korrekt geschrieben.")
-                .font(.system(size: 10)).foregroundStyle(.tertiary)
-                .fixedSize(horizontal: false, vertical: true)
-            TextField("IBELSA, Levante, Adyen, ...", text: vocabularyBinding, axis: .vertical)
-                .textFieldStyle(.roundedBorder)
-                .font(.system(size: 11.5))
-                .lineLimit(1...3)
+            profilesSection
         }
     }
 
@@ -367,6 +255,19 @@ struct ExtrasPageView: View {
                 .strokeBorder(isActive ? Color.humiqaIndigo.opacity(0.25) : Color.clear, lineWidth: 1)
         )
     }
+}
+
+// MARK: - Nutzung (Einstellungen → Reiter)
+
+struct UsageSettingsView: View {
+    @Bindable var appState: AppState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            usageCard
+        }
+        .padding(16)
+    }
 
     private var usageCard: some View {
         HStack(spacing: 0) {
@@ -395,6 +296,14 @@ struct ExtrasPageView: View {
         }
         .frame(maxWidth: .infinity)
     }
+}
+
+// MARK: - Allgemein-Schalter (Einstellungen → Anpassen)
+
+struct GeneralQuickTogglesSection: View {
+    @Bindable var appState: AppState
+
+    var body: some View { quickToggles }
 
     private var quickToggles: some View {
         VStack(spacing: 0) {
@@ -449,6 +358,19 @@ struct ExtrasPageView: View {
                     .lineLimit(2).fixedSize(horizontal: false, vertical: true)
             }
         }
+    }
+}
+
+// MARK: - Verlauf (Einstellungen → Reiter)
+
+struct HistorySettingsView: View {
+    @Bindable var appState: AppState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            historySection
+        }
+        .padding(16)
     }
 
     @ViewBuilder

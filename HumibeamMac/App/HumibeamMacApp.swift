@@ -129,10 +129,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         appState.page = .settings
     }
 
-    /// Reveal the history/usage hub (menu-bar popover on its history page).
+    /// Reveal the history hub (menu-bar popover, settings page on the Verlauf tab).
     @objc private func handleShowHistoryHub() {
         if !popover.isShown { showPopover() }
-        appState.page = .history
+        appState.settingsInitialTab = 3
+        appState.page = .settings
     }
 
     /// "Nach Updates suchen…" — open the main window (so the result is visible in its sidebar) and check.

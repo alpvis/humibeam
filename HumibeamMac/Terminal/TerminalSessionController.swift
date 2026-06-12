@@ -208,8 +208,8 @@ final class TerminalSessionController: NSObject, TerminalViewDelegate {
         Task { await conn?.close() }
     }
 
-    func setFontSize(_ size: CGFloat) {
-        terminalView.font = NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
+    func setFont(_ font: NSFont) {
+        terminalView.font = font
     }
 
     private func captureTranscript(_ bytes: [UInt8]) {

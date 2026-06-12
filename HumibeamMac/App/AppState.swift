@@ -7,7 +7,6 @@ enum PopoverPage: Equatable {
     case onboarding
     case settings
     case workflow
-    case history
 }
 
 @Observable
@@ -18,6 +17,8 @@ final class AppState {
 
     var activeWorkflow: (any Workflow)?
     var page: PopoverPage = .main
+    /// Gewünschter Reiter beim nächsten Öffnen der Einstellungen (z.B. Uhr-Button → Verlauf).
+    var settingsInitialTab: Int?
     var isPopoverShown = false
     var menuBarStatus: MenuBarStatus = .idle {
         didSet {
