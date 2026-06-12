@@ -1,7 +1,7 @@
 {
-  "version": "3.5",
-  "build": 35,
-  "dmgURL": "https://github.com/alpvis/humibeam/releases/download/v3.5/Humibeam.dmg",
-  "notes": "Neues Design: Sidebar, Topbar und Fußzeile als Einheit; dunkles Popover; Settings-Reiter Update mit Auto-Update-Prüfung; HUMIBEAM-Branding",
+  "version": "3.6",
+  "build": 36,
+  "dmgURL": "https://github.com/alpvis/humibeam/releases/download/v3.6/Humibeam.dmg",
+  "notes": "HUMIBEAM-Branding im Hauptfenster (Titel + Header), Copyright-Zeile in der Fußleiste",
   "minOS": "13.0"
 }
