@@ -86,6 +86,20 @@ cd /Users/ali/humibeam
 ```
 Hier konnte ich nur ad-hoc/Apple-Development signieren (keine Developer-ID im Keychain), daher Release universal verifiziert, aber nicht notarisiert.
 
+## iOS 1.1 — Parität-Update (2026-06-12)
+
+- **Snippets auf iOS**: gleiche Daten/Logik wie am Mac (`SnippetStore` geteilt), inkl.
+  `{{Platzhalter}}`-Abfrage, Anlegen/Bearbeiten/Löschen, „Direkt abschicken"-Toggle.
+  Toolbar-Knopf `{}` im Terminal.
+- **Befehls-Verlauf auf iOS**: Zeilenpuffer-Aufzeichnung wie am Mac (`CommandHistoryStore`
+  geteilt, gleiche JSON-Datei pro Gerät); durchsuchbares Sheet, Tap tippt den Befehl ohne Enter.
+  Auf iOS läuft auch die Tasten-Leiste/Diktat/Snippets durch den Puffer (vieles kommt dort
+  nicht über die Hardware-Tastatur).
+- **Pfad-Chips**: Dateien, die Claude zuletzt angefasst hat (`recentPaths`), als antippbare
+  Chips über der Statuszeile — Tap tippt den Pfad ins Terminal.
+- Geteilter Kern erweitert: `CommandHistoryStore.swift` aus der Mac-Palette herausgelöst
+  (Mac-UI unverändert in `CommandHistory.swift`).
+
 ## Bewusst offen (nächste Iteration, dokumentiert)
 - **known_hosts Key-Pinning**: swift-nio-ssh exponiert Host-Key-Bytes nicht öffentlich → aktuell TOFU. Härten vor Public-Release.
 - **Key-Import** RSA/ECDSA + passphrasen-geschützt (braucht bcrypt-pbkdf); aktuell ed25519 ohne Passphrase.

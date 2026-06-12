@@ -9,8 +9,8 @@ settings:
   base:
     SWIFT_VERSION: "5.10"
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
-    MARKETING_VERSION: "1.0"
-    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "1.1"
+    CURRENT_PROJECT_VERSION: "2"
 
 packages:
   SwiftTerm:
@@ -37,7 +37,9 @@ targets:
       - path: ../HumibeamMac/Terminal/ClaudeApproval.swift
       - path: ../HumibeamMac/Terminal/GitDiffService.swift
       - path: ../HumibeamMac/Terminal/ClaudeBridge.swift
+      - path: ../HumibeamMac/Terminal/CommandHistoryStore.swift
       - path: ../HumibeamMac/Hosts/HostStore.swift
+      - path: ../HumibeamMac/Hosts/SnippetStore.swift
       - path: ../HumibeamMac/Services/KeychainService.swift
       - path: ../HumibeamMac/Services/AppSupportPaths.swift
       - path: ../HumibeamMac/Services/NetworkMonitor.swift

@@ -72,6 +72,8 @@ final class AppModel {
     let hostStore = HostStore()
     let knownHosts = KnownHostsStore()
     let network = NetworkMonitor()
+    let snippets = SnippetStore()
+    let commandHistory = CommandHistoryStore()
 
     @ObservationIgnored private(set) var controllers: [UUID: TerminalController] = [:]
     /// Hosts mit lebender Session (für den grünen Punkt in der Liste).
@@ -110,6 +112,10 @@ final class AppModel {
         controller.applyTheme(theme)
         controller.setFontSize(fontSize)
         controller.primeNetwork(network.isOnline)
+        let hostName = host.displayName
+        controller.onCommandSubmitted = { [weak self] cmd in
+            self?.commandHistory.record(cmd, host: hostName)
+        }
         controllers[host.id] = controller
         activeSessions.insert(host.id)
         return controller

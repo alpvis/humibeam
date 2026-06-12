@@ -9,6 +9,8 @@ struct TerminalScreen: View {
 
     @StateObject private var holder = ControllerHolder()
     @State private var showsDiff = false
+    @State private var showsSnippets = false
+    @State private var showsHistory = false
     @State private var photoItem: PhotosPickerItem?
     @State private var dictationError: String?
 
@@ -19,6 +21,9 @@ struct TerminalScreen: View {
             TerminalHostView(controller: controller)
                 .ignoresSafeArea(.container, edges: .bottom)
 
+            if !controller.recentPaths.isEmpty {
+                recentPathChips(controller)
+            }
             statusBar(controller)
         }
         .background(Color(model.theme.background))
@@ -45,6 +50,10 @@ struct TerminalScreen: View {
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button {
+                    showsSnippets = true
+                } label: { Image(systemName: "curlybraces") }
+
+                Button {
                     showsDiff = true
                 } label: { Image(systemName: "plusminus") }
                     .disabled(!controller.isConnected)
@@ -56,6 +65,9 @@ struct TerminalScreen: View {
                     PhotosPicker(selection: $photoItem, matching: .images) {
                         Label("Foto hochladen…", systemImage: "photo")
                     }
+                    Button {
+                        showsHistory = true
+                    } label: { Label("Befehls-Verlauf…", systemImage: "clock.arrow.circlepath") }
                     Divider()
                     if controller.isConnected {
                         Button(role: .destructive) {
@@ -71,6 +83,12 @@ struct TerminalScreen: View {
         }
         .sheet(isPresented: $showsDiff) {
             DiffSheet(controller: controller)
+        }
+        .sheet(isPresented: $showsSnippets) {
+            SnippetsSheet(controller: controller)
+        }
+        .sheet(isPresented: $showsHistory) {
+            HistorySheet(controller: controller)
         }
         .onChange(of: photoItem) { _, item in
             guard let item else { return }
@@ -88,6 +106,31 @@ struct TerminalScreen: View {
             }
             _ = controller.terminalView.becomeFirstResponder()
         }
+    }
+
+    /// Dateien, die Claude zuletzt angefasst hat, als antippbare Chips — Tap tippt den Pfad
+    /// ins Terminal (z. B. um ihn in den nächsten Prompt zu übernehmen).
+    private func recentPathChips(_ controller: TerminalController) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(controller.recentPaths, id: \.self) { path in
+                    Button {
+                        controller.sendToShell(path)
+                    } label: {
+                        Label((path as NSString).lastPathComponent, systemImage: "doc.text")
+                            .font(.caption.monospaced())
+                            .lineLimit(1)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Capsule().fill(.cyan.opacity(0.15)))
+                            .foregroundStyle(.cyan)
+                    }
+                }
+            }
+            .padding(.horizontal, 10)
+        }
+        .padding(.vertical, 4)
+        .background(.bar)
     }
 
     private func statusBar(_ controller: TerminalController) -> some View {

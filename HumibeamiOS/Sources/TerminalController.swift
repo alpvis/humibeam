@@ -286,19 +286,55 @@ final class TerminalController: NSObject, TerminalViewDelegate, ObservableObject
         terminalView.backgroundColor = theme.background
     }
 
-    /// Used by image paste and the key toolbar to type into the live session.
+    /// Used by image paste, snippets, dictation and the key toolbar to type into the live session.
+    /// Läuft mit durch den Zeilenpuffer, damit der Befehls-Verlauf vollständige Zeilen sieht
+    /// (anders als am Mac kommt auf iOS viel Eingabe nicht über die Hardware-Tastatur).
     func sendToShell(_ text: String) {
         ptySession?.write(text)
+        captureCommandInput(Array(text.utf8))
     }
 
     func sendToShell(_ bytes: [UInt8]) {
         ptySession?.write(bytes)
+        captureCommandInput(bytes)
+    }
+
+    // MARK: - Befehls-Verlauf (Zeilenpuffer der Tastatureingabe — gleiche Logik wie am Mac)
+
+    var onCommandSubmitted: ((String) -> Void)?
+    private var lineBuffer: [UInt8] = []
+    /// Pfeiltasten/Tab verändern die echte Zeile unsichtbar für uns → Zeile nicht aufzeichnen.
+    private var lineDirty = false
+
+    private func captureCommandInput(_ bytes: [UInt8]) {
+        for b in bytes {
+            switch b {
+            case 0x0D, 0x0A: // Enter
+                if !lineDirty, !lineBuffer.isEmpty,
+                   let cmd = String(bytes: lineBuffer, encoding: .utf8) {
+                    onCommandSubmitted?(cmd)
+                }
+                lineBuffer.removeAll(); lineDirty = false
+            case 0x7F, 0x08: // Backspace
+                if !lineBuffer.isEmpty { lineBuffer.removeLast() }
+            case 0x03, 0x15: // Ctrl-C / Ctrl-U verwerfen die Zeile
+                lineBuffer.removeAll(); lineDirty = false
+            case 0x1B, 0x09: // ESC-Sequenzen (Pfeile) und Tab-Vervollständigung
+                lineDirty = true
+            case 0x20...0x7E:
+                lineBuffer.append(b)
+            default:
+                if b >= 0x80 { lineBuffer.append(b) }  // UTF-8-Folgebytes (Umlaute etc.)
+                else { lineDirty = true }              // sonstige Steuerzeichen
+            }
+        }
     }
 
     // MARK: - TerminalViewDelegate
 
     func send(source: TerminalView, data: ArraySlice<UInt8>) {
         ptySession?.write(Array(data))
+        captureCommandInput(Array(data))
     }
 
     func sizeChanged(source: TerminalView, newCols: Int, newRows: Int) {
