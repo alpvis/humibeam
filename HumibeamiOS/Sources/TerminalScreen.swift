@@ -2,22 +2,38 @@ import SwiftUI
 import PhotosUI
 import Combine
 
-/// Eine laufende Session: Terminal, Statuszeile, Agent-Cockpit (Approval-Karte) und Werkzeuge.
+/// Eine laufende Sitzung: Terminal, Statuszeile, Agent-Cockpit (Approval-Karte) und Werkzeuge.
+/// Multi-Session: oben eine Leiste mit allen lebenden Sitzungen, "+" öffnet eine weitere zum Host.
 struct TerminalScreen: View {
     @Environment(AppModel.self) private var model
-    let host: SSHHost
+    let sessionID: UUID
 
     @StateObject private var holder = ControllerHolder()
     @State private var showsDiff = false
     @State private var showsSnippets = false
     @State private var showsHistory = false
+    @State private var showsFiles = false
+    @State private var showsForwards = false
     @State private var photoItem: PhotosPickerItem?
     @State private var dictationError: String?
 
     var body: some View {
-        let controller = holder.controller(for: host, model: model)
+        if let session = model.session(withID: sessionID) {
+            content(session)
+        } else {
+            ContentUnavailableView("Sitzung beendet", systemImage: "xmark.circle",
+                                   description: Text("Diese Sitzung wurde geschlossen."))
+        }
+    }
 
-        VStack(spacing: 0) {
+    private func content(_ session: TerminalSession) -> some View {
+        let controller = holder.bind(session.controller)
+
+        return VStack(spacing: 0) {
+            if model.sessions.count > 1 {
+                sessionBar(current: session)
+            }
+
             TerminalHostView(controller: controller)
                 .ignoresSafeArea(.container, edges: .bottom)
 
@@ -45,37 +61,54 @@ struct TerminalScreen: View {
         } message: {
             Text(dictationError ?? "")
         }
-        .navigationTitle(host.displayName)
+        .navigationTitle(session.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button {
                     showsSnippets = true
                 } label: { Image(systemName: "curlybraces") }
+                    .keyboardShortcut("j", modifiers: .command)
 
                 Button {
                     showsDiff = true
                 } label: { Image(systemName: "plusminus") }
                     .disabled(!controller.isConnected)
+                    .keyboardShortcut("d", modifiers: [.command, .shift])
 
                 Menu {
+                    Button {
+                        showsFiles = true
+                    } label: { Label("Dateien…", systemImage: "folder") }
+                        .disabled(!controller.isConnected)
+                    Button {
+                        showsForwards = true
+                    } label: { Label("Port-Weiterleitung…", systemImage: "arrow.left.arrow.right") }
+                        .disabled(!controller.isConnected)
+                    Button {
+                        showsHistory = true
+                    } label: { Label("Befehls-Verlauf…", systemImage: "clock.arrow.circlepath") }
+                    Divider()
                     Button {
                         Task { await ImagePaste.pasteFromClipboard(into: controller) }
                     } label: { Label("Aus Zwischenablage einfügen", systemImage: "doc.on.clipboard") }
                     PhotosPicker(selection: $photoItem, matching: .images) {
                         Label("Foto hochladen…", systemImage: "photo")
                     }
-                    Button {
-                        showsHistory = true
-                    } label: { Label("Befehls-Verlauf…", systemImage: "clock.arrow.circlepath") }
                     Divider()
+                    Button {
+                        let newSession = model.addSession(for: session.host)
+                        model.connect(newSession)
+                        model.requestedSessionID = newSession.id
+                    } label: { Label("Neue Sitzung zu diesem Server", systemImage: "plus.rectangle.on.rectangle") }
+                        .keyboardShortcut("t", modifiers: .command)
                     if controller.isConnected {
                         Button(role: .destructive) {
                             controller.disconnect()
                         } label: { Label("Trennen", systemImage: "xmark.circle") }
                     } else {
                         Button {
-                            model.connect(host, controller: controller)
+                            model.connect(session)
                         } label: { Label("Verbinden", systemImage: "bolt") }
                     }
                 } label: { Image(systemName: "ellipsis.circle") }
@@ -90,6 +123,12 @@ struct TerminalScreen: View {
         .sheet(isPresented: $showsHistory) {
             HistorySheet(controller: controller)
         }
+        .sheet(isPresented: $showsFiles) {
+            FilesSheet(controller: controller)
+        }
+        .sheet(isPresented: $showsForwards) {
+            ForwardsSheet(session: session)
+        }
         .onChange(of: photoItem) { _, item in
             guard let item else { return }
             Task {
@@ -102,10 +141,41 @@ struct TerminalScreen: View {
         }
         .onAppear {
             if !controller.isConnected && controller.connection == nil {
-                model.connect(host, controller: controller)
+                model.connect(session)
             }
             _ = controller.terminalView.becomeFirstResponder()
         }
+    }
+
+    /// Leiste mit allen lebenden Sitzungen (alle Hosts) — Tap wechselt.
+    private func sessionBar(current: TerminalSession) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(model.sessions) { session in
+                    Button {
+                        guard session.id != current.id else { return }
+                        model.requestedSessionID = session.id
+                    } label: {
+                        HStack(spacing: 5) {
+                            Circle()
+                                .fill(session.controller.isConnected ? .green : .orange)
+                                .frame(width: 6, height: 6)
+                            Text(session.title)
+                                .font(.caption.weight(session.id == current.id ? .bold : .regular))
+                                .lineLimit(1)
+                        }
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(session.id == current.id
+                                                   ? Color.cyan.opacity(0.25) : Color.gray.opacity(0.15)))
+                        .foregroundStyle(session.id == current.id ? .cyan : .secondary)
+                    }
+                }
+            }
+            .padding(.horizontal, 10)
+        }
+        .padding(.vertical, 4)
+        .background(.bar)
     }
 
     /// Dateien, die Claude zuletzt angefasst hat, als antippbare Chips — Tap tippt den Pfad
@@ -155,24 +225,23 @@ struct TerminalScreen: View {
     }
 }
 
-/// Hält die Controller-Referenz über View-Updates stabil (Session lebt im AppModel weiter).
+/// Reicht objectWillChange des (ObservableObject-)Controllers an SwiftUI durch; die Sitzung
+/// selbst lebt im AppModel weiter.
 @MainActor
 private final class ControllerHolder: ObservableObject {
-    private var cached: TerminalController?
+    private var bound: TerminalController?
+    private var bag = Set<AnyCancellable>()
 
-    func controller(for host: SSHHost, model: AppModel) -> TerminalController {
-        if let cached { return cached }
-        let controller = model.controller(for: host)
-        cached = controller
-        // Status-Änderungen des Controllers an SwiftUI durchreichen.
+    func bind(_ controller: TerminalController) -> TerminalController {
+        if bound === controller { return controller }
+        bag.removeAll()
+        bound = controller
         controller.objectWillChange
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &bag)
         return controller
     }
-
-    private var bag = Set<AnyCancellable>()
 }
 
 // MARK: - Approval-Karte (Agent-Cockpit Stufe 1)

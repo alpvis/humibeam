@@ -99,6 +99,7 @@ final class TerminalController: NSObject, TerminalViewDelegate, ObservableObject
     }
 
     private func handleSessionClosed() {
+        flushArchive()
         ptySession = nil
         connection = nil
         isConnected = false
@@ -173,6 +174,7 @@ final class TerminalController: NSObject, TerminalViewDelegate, ObservableObject
     }
 
     func disconnect() {
+        flushArchive()
         userInitiatedDisconnect = true
         reconnectWorkItem?.cancel()
         reconnectWorkItem = nil
@@ -189,11 +191,52 @@ final class TerminalController: NSObject, TerminalViewDelegate, ObservableObject
         terminalView.font = UIFont.monospacedSystemFont(ofSize: size, weight: .regular)
     }
 
+    func setFont(_ font: UIFont) {
+        terminalView.font = font
+    }
+
+    // MARK: - Transcript-Archiv (wie am Mac: Application Support/Humibeam/Transcripts/<Host>/)
+
+    /// Host-Name fürs Protokoll-Verzeichnis; nil = nicht archivieren.
+    var archiveLabel: String?
+    private var archiveURL: URL?
+    private var archiveBuffer = ""
+
+    private func archive(_ chunk: String) {
+        guard let label = archiveLabel else { return }
+        if archiveURL == nil {
+            let safe = label.replacingOccurrences(of: "/", with: "-")
+            let dir = AppSupportPaths.appSupportDirectoryURL
+                .appendingPathComponent("Transcripts", isDirectory: true)
+                .appendingPathComponent(safe, isDirectory: true)
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let fmt = DateFormatter()
+            fmt.dateFormat = "yyyy-MM-dd HH.mm.ss"
+            archiveURL = dir.appendingPathComponent("\(fmt.string(from: Date())).log")
+        }
+        archiveBuffer += chunk
+        if archiveBuffer.utf8.count > 8192 { flushArchive() }
+    }
+
+    func flushArchive() {
+        guard let url = archiveURL, !archiveBuffer.isEmpty else { return }
+        let data = Data(archiveBuffer.utf8)
+        archiveBuffer = ""
+        if let handle = try? FileHandle(forWritingTo: url) {
+            handle.seekToEndOfFile()
+            handle.write(data)
+            try? handle.close()
+        } else {
+            try? data.write(to: url)
+        }
+    }
+
     func setStatus(_ text: String) { status = text }
 
     private func captureTranscript(_ bytes: [UInt8]) {
         let chunk = Self.stripANSI(String(decoding: bytes, as: UTF8.self))
         guard !chunk.isEmpty else { return }
+        archive(chunk)
         transcript += chunk
         if transcript.count > Self.transcriptCap {
             transcript = String(transcript.suffix(Self.transcriptCap))

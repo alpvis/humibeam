@@ -11,6 +11,7 @@ struct HumibeamApp: App {
         WindowGroup {
             HostListView()
                 .environment(model)
+                .appLock()   // Face-ID-Schutz (Einstellungen → Sicherheit)
         }
     }
 }
@@ -64,8 +65,24 @@ enum PushRegistration {
     }
 }
 
-/// Zentrales App-Modell: Profile, known_hosts, Netz-Monitor und die lebenden Terminal-Sessions
-/// (eine pro Host, bleibt beim Zurücknavigieren bestehen).
+/// Eine lebende Terminal-Sitzung (Multi-Session: mehrere pro Host möglich, iTerm-artig).
+@MainActor
+final class TerminalSession: Identifiable {
+    let id = UUID()
+    let host: SSHHost
+    let controller: TerminalController
+    /// "Server (2)" ab der zweiten Sitzung zum selben Host.
+    var title: String
+
+    init(host: SSHHost, controller: TerminalController, index: Int) {
+        self.host = host
+        self.controller = controller
+        self.title = index <= 1 ? host.displayName : "\(host.displayName) (\(index))"
+    }
+}
+
+/// Zentrales App-Modell: Profile, known_hosts, Netz-Monitor, Konto-Sync und die lebenden
+/// Terminal-Sitzungen (bleiben beim Zurücknavigieren bestehen).
 @Observable
 @MainActor
 final class AppModel {
@@ -74,47 +91,81 @@ final class AppModel {
     let network = NetworkMonitor()
     let snippets = SnippetStore()
     let commandHistory = CommandHistoryStore()
+    let bookmarks = BookmarkStore()
     let accountSync = AccountSyncService()
 
-    @ObservationIgnored private(set) var controllers: [UUID: TerminalController] = [:]
-    /// Hosts mit lebender Session (für den grünen Punkt in der Liste).
-    var activeSessions: Set<UUID> = []
+    private(set) var sessions: [TerminalSession] = []
+    /// Vom TerminalScreen gesetzt, von der HostListView beobachtet → Navigation wechselt die Sitzung.
+    var requestedSessionID: UUID?
+    /// Server-Vitalwerte je Host (nur für Hosts mit lebender Verbindung, alle 30 s).
+    var stats: [UUID: ServerStats] = [:]
 
     var themeID: String {
         didSet {
             UserDefaults.standard.set(themeID, forKey: "themeID")
-            controllers.values.forEach { $0.applyTheme(theme) }
+            sessions.forEach { $0.controller.applyTheme(theme) }
             accountSync.scheduleExport()
         }
     }
     var fontSize: Double {
         didSet {
             UserDefaults.standard.set(fontSize, forKey: "fontSize")
-            controllers.values.forEach { $0.setFontSize(fontSize) }
+            applyFonts()
+            accountSync.scheduleExport()
+        }
+    }
+    /// Leer = System-Monospace. Synct mit dem Mac (terminal.fontName).
+    var fontName: String {
+        didSet {
+            UserDefaults.standard.set(fontName, forKey: "fontName")
+            applyFonts()
             accountSync.scheduleExport()
         }
     }
 
     var theme: TerminalTheme { TerminalTheme.by(id: themeID) }
 
+    var terminalFont: UIFont {
+        if !fontName.isEmpty, let f = UIFont(name: fontName, size: fontSize) { return f }
+        return .monospacedSystemFont(ofSize: fontSize, weight: .regular)
+    }
+
+    /// Installierte Festbreiten-Schriften (für den Picker).
+    static let availableMonospaceFamilies: [String] = UIFont.familyNames.filter { family in
+        guard let name = UIFont.fontNames(forFamilyName: family).first,
+              let font = UIFont(name: name, size: 13) else { return false }
+        return font.fontDescriptor.symbolicTraits.contains(.traitMonoSpace)
+    }.sorted()
+
+    private func applyFonts() {
+        let f = terminalFont
+        sessions.forEach { $0.controller.setFont(f) }
+    }
+
+    @ObservationIgnored private var healthTimer: Timer?
+
     init() {
         themeID = UserDefaults.standard.string(forKey: "themeID") ?? "beam"
         fontSize = UserDefaults.standard.object(forKey: "fontSize") as? Double ?? 13
+        fontName = UserDefaults.standard.string(forKey: "fontName") ?? ""
         network.onChange = { [weak self] online in
             guard let self else { return }
-            for controller in self.controllers.values {
-                online ? controller.networkBecameAvailable() : controller.networkBecameUnavailable()
+            for session in self.sessions {
+                online ? session.controller.networkBecameAvailable()
+                       : session.controller.networkBecameUnavailable()
             }
         }
 
-        // Humibeam-Konto: E2E-verschlüsselter Sync mit den Macs. iOS kennt fontName/bookmarks
-        // (noch) nicht → bleiben nil und werden vom letzten Server-Stand übernommen.
+        // Humibeam-Konto: E2E-verschlüsselter Sync mit den Macs.
         hostStore.onHostsChangedSync = { [weak self] in self?.accountSync.scheduleExport() }
         snippets.onChanged = { [weak self] in self?.accountSync.scheduleExport() }
+        bookmarks.onChanged = { [weak self] in self?.accountSync.scheduleExport() }
         accountSync.buildPayload = { [weak self] in
             guard let self else { return AccountSyncPayload() }
             return AccountSyncPayload(hosts: hostStore.hosts,
                                       snippets: snippets.snippets,
+                                      bookmarks: bookmarks.bookmarks,
+                                      fontName: fontName.isEmpty ? nil : fontName,
                                       fontSize: fontSize,
                                       themeID: themeID)
         }
@@ -122,40 +173,70 @@ final class AppModel {
             guard let self else { return }
             if let h = payload.hosts { hostStore.hosts = h }
             if let s = payload.snippets { snippets.snippets = s }
+            if let b = payload.bookmarks { bookmarks.bookmarks = b }
             // Nur Themes übernehmen, die es auf iOS auch gibt (IDs können je Plattform abweichen).
             if let t = payload.themeID, TerminalTheme.all.contains(where: { $0.id == t }) { themeID = t }
             if let f = payload.fontSize { fontSize = f }
+            if let n = payload.fontName, UIFont(name: n, size: 13) != nil { fontName = n }
         }
         accountSync.start()
+
+        healthTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.pollHealth() }
+        }
     }
 
-    /// Liefert die lebende Session für einen Host oder erzeugt eine neue.
-    func controller(for host: SSHHost) -> TerminalController {
-        if let existing = controllers[host.id] { return existing }
+    // MARK: - Sitzungen
+
+    var activeSessions: Set<UUID> { Set(sessions.filter { $0.controller.isConnected }.map { $0.host.id }) }
+
+    func session(withID id: UUID) -> TerminalSession? { sessions.first { $0.id == id } }
+
+    /// Erste Sitzung für einen Host (oder neue anlegen) — Tap in der Serverliste.
+    func primarySession(for host: SSHHost) -> TerminalSession {
+        if let existing = sessions.first(where: { $0.host.id == host.id }) { return existing }
+        return addSession(for: host)
+    }
+
+    /// Weitere Sitzung zum selben Host ("Neue Sitzung" im Terminal-Menü).
+    @discardableResult
+    func addSession(for host: SSHHost) -> TerminalSession {
         let controller = TerminalController(knownHosts: knownHosts)
         controller.applyTheme(theme)
-        controller.setFontSize(fontSize)
+        controller.setFont(terminalFont)
         controller.primeNetwork(network.isOnline)
+        controller.archiveLabel = host.displayName
         let hostName = host.displayName
         controller.onCommandSubmitted = { [weak self] cmd in
             self?.commandHistory.record(cmd, host: hostName)
         }
-        controllers[host.id] = controller
-        activeSessions.insert(host.id)
-        return controller
+        let index = sessions.filter { $0.host.id == host.id }.count + 1
+        let session = TerminalSession(host: host, controller: controller, index: index)
+        sessions.append(session)
+        return session
     }
 
-    func closeSession(for hostID: UUID) {
-        controllers[hostID]?.disconnect()
-        controllers.removeValue(forKey: hostID)
-        activeSessions.remove(hostID)
+    func closeSession(_ session: TerminalSession) {
+        session.controller.disconnect()
+        sessions.removeAll { $0.id == session.id }
+        if sessions.first(where: { $0.host.id == session.host.id }) == nil {
+            stats.removeValue(forKey: session.host.id)
+        }
     }
 
-    /// Verbindet einen Controller mit den Credentials des Hosts (inkl. ProxyJump).
-    func connect(_ host: SSHHost, controller: TerminalController) {
+    /// Alle Sitzungen eines Hosts schließen (Swipe in der Serverliste).
+    func closeSessions(for hostID: UUID) {
+        for session in sessions.filter({ $0.host.id == hostID }) { closeSession(session) }
+    }
+
+    /// Verbindet einen Controller mit den Credentials des Hosts (inkl. ProxyJump, tmux).
+    func connect(_ session: TerminalSession) {
+        let host = session.host
         if host.tmuxEnabled {
-            controller.startupCommand =
-                "command -v tmux >/dev/null 2>&1 && { clear; exec tmux new-session -A -s humibeam; } " +
+            let index = sessions.filter { $0.host.id == host.id }.firstIndex { $0.id == session.id } ?? 0
+            let name = index == 0 ? "humibeam" : "humibeam-\(index + 1)"
+            session.controller.startupCommand =
+                "command -v tmux >/dev/null 2>&1 && { clear; exec tmux new-session -A -s \(name); } " +
                 "|| echo 'humibeam: tmux ist am Server nicht installiert — normale Sitzung.'"
         }
         do {
@@ -164,9 +245,52 @@ final class AppModel {
             if let jumpCreds = try hostStore.proxyCredentials(for: host) {
                 proxy = SSHConnection.ProxyJump(credentials: jumpCreds, verifier: knownHosts)
             }
-            controller.connect(creds, proxy: proxy)
+            session.controller.connect(creds, proxy: proxy)
         } catch {
-            controller.setStatus("Fehler: \(error.localizedDescription)")
+            session.controller.setStatus("Fehler: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - Port-Weiterleitungen (ssh -L)
+
+    struct ActiveForward: Identifiable {
+        let id = UUID()
+        let localPort: Int
+        let targetHost: String
+        let targetPort: Int
+        let forward: LocalForward
+        let sessionID: UUID
+    }
+
+    var forwards: [ActiveForward] = []
+
+    func addForward(session: TerminalSession, localPort: Int, targetHost: String, targetPort: Int) async throws {
+        guard let conn = session.controller.connection else { throw AccountError.server("Keine Verbindung") }
+        let fwd = try await conn.startLocalForward(localPort: localPort, targetHost: targetHost, targetPort: targetPort)
+        forwards.append(ActiveForward(localPort: fwd.localPort, targetHost: targetHost,
+                                      targetPort: targetPort, forward: fwd, sessionID: session.id))
+    }
+
+    func stopForward(_ f: ActiveForward) {
+        f.forward.close()
+        forwards.removeAll { $0.id == f.id }
+    }
+
+    // MARK: - Server-Gesundheit (Ampel in der Serverliste)
+
+    private func pollHealth() {
+        var seen = Set<UUID>()
+        for session in sessions where session.controller.isConnected {
+            guard !seen.contains(session.host.id) else { continue }
+            seen.insert(session.host.id)
+            guard let conn = session.controller.connection else { continue }
+            let hostID = session.host.id
+            Task { [weak self] in
+                guard let (status, out, _) = try? await conn.exec(ServerStats.command), status == 0,
+                      let text = String(data: out, encoding: .utf8),
+                      let parsed = ServerStats.parse(text) else { return }
+                self?.stats[hostID] = parsed
+            }
         }
     }
 }

@@ -41,6 +41,7 @@ targets:
       - path: ../HumibeamMac/Hosts/HostStore.swift
       - path: ../HumibeamMac/Hosts/SnippetStore.swift
       - path: ../HumibeamMac/Hosts/BookmarkStore.swift
+      - path: ../HumibeamMac/App/ServerHealth.swift
       - path: ../HumibeamMac/Services/AccountSync
       - path: ../HumibeamMac/Services/KeychainService.swift
       - path: ../HumibeamMac/Services/AppSupportPaths.swift
@@ -58,6 +59,8 @@ targets:
         INFOPLIST_KEY_NSLocalNetworkUsageDescription: "Humibeam verbindet sich per SSH mit Servern, auch in deinem lokalen Netzwerk."
         INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Bilder aus der Fotobibliothek können in die Remote-Session hochgeladen werden."
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "Sprach-Diktat: Aufnahmen werden transkribiert und als Text ins Terminal getippt."
+        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "Lokales Sprach-Diktat: Apple-Spracherkennung wandelt deine Aufnahme auf dem Gerät in Text um."
+        INFOPLIST_KEY_NSFaceIDUsageDescription: "Schützt den Zugriff auf deine Server-Verbindungen."
         INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         TARGETED_DEVICE_FAMILY: "1,2"

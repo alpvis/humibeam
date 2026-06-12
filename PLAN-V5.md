@@ -27,15 +27,21 @@
       register/login/Blob-Roundtrip/falsches Passwort. Test: /tmp/acct-e2e/main.swift
 - [ ] OFFEN: Deploy auf alpvis.com (server/sync/install.sh + nginx-Location) — SSH-Key von Ali nötig
 
-### Welle 2 — iOS-Parität  ☐
-- [ ] **P11** Datei-Browser iOS (geteilte SSHFileTransfer; Listing/Up-/Download/Share-Sheet)
-- [ ] **P12** Multi-Session/Tabs + iPad Split View + Hardware-Tastatur-Shortcuts
-- [ ] **P13** Transcript-Archiv iOS (Mitschnitt auf Platte + durchsuchbare Liste)
-- [ ] **P14** Server-Health in der Hostliste (Load/RAM/Disk-Ampel, exec-Kanal, 30 s)
-- [ ] **P15** Port-Forwarding iOS (directTCPIP wie Mac, Verwaltungs-Sheet)
-- [ ] **P16** Terminal-Schriftarten + Größen-Presets iOS
-- [ ] **P17** Face-ID-Schutz (App-weit, LocalAuthentication)
-- [ ] **P18** On-Device-Diktat (SFSpeechRecognizer lokal als Alternative zu OpenAI-Whisper)
+### Welle 2 — iOS-Parität  ✅
+- [x] **P11** Datei-Browser iOS: FilesSheet (listDetailed, Up-/Download, Teilen, Editor,
+      mkdir/umbenennen/chmod/löschen, Lesezeichen aus BookmarkStore — synct übers Konto)
+- [x] **P12** Multi-Session: TerminalSession-Modell, Navigation über Session-UUIDs,
+      Session-Leiste im Terminal, „Neue Sitzung zu diesem Server" (⌘T), Liste „Aktive
+      Sitzungen", Shortcuts ⌘N/⌘T/⌘J/⌘⇧D für iPad-Hardware-Tastatur
+- [x] **P13** Transcript-Archiv iOS: TerminalController archiviert wie der Mac nach
+      Application Support/Humibeam/Transcripts/<Host>/; TranscriptArchiveSheet mit Inhaltssuche
+- [x] **P14** Server-Health: ServerHealth.swift geteilt, AppModel pollt 30 s, Ampel in HostRow
+- [x] **P15** Port-Forwarding: AppModel.forwards + ForwardsSheet („In Safari öffnen")
+- [x] **P16** Schriftarten: fontName im AppModel (synct mit Mac terminal.fontName),
+      Monospace-Picker + Größen-Presets in den Einstellungen
+- [x] **P17** Face-ID: appLock()-Modifier (LocalAuthentication, Sperre bei Hintergrund)
+- [x] **P18** On-Device-Diktat: SFSpeechRecognizer-Pfad in DictationService
+      (Einstellungen → „Lokal transkribieren"), Whisper bleibt Alternative
 
 ### Welle 3 — KI-Cockpit  ☐
 - [ ] **P5** Agent-Inbox: wartende Approvals über alle Sessions (Mac-Fenster + iOS-Tab)

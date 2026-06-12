@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import Speech
 import UIKit
 
 /// Sprach-Diktat fürs iPhone/iPad: aufnehmen → OpenAI Whisper → Text ins Terminal.
@@ -71,19 +72,54 @@ final class DictationService: NSObject {
         try? AVAudioSession.sharedInstance().setActive(false)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
-        guard let apiKey = KeychainService.load(key: .openAIAPIKey), !apiKey.isEmpty else {
-            completion(.failure(DictationError.noAPIKey)); return
-        }
         guard let audio = try? Data(contentsOf: fileURL), audio.count > 1000 else {
             completion(.failure(DictationError.recordingFailed)); return
         }
 
+        // Lokal (Apple, on-device) oder OpenAI Whisper — Einstellungen → Sprach-Diktat.
+        if UserDefaults.standard.bool(forKey: "dictation.local") {
+            Self.transcribeLocally(url: fileURL, completion: completion)
+            return
+        }
+
+        guard let apiKey = KeychainService.load(key: .openAIAPIKey), !apiKey.isEmpty else {
+            completion(.failure(DictationError.noAPIKey)); return
+        }
         Task {
             do {
                 let text = try await Self.transcribe(audio: audio, apiKey: apiKey)
                 completion(.success(text))
             } catch {
                 completion(.failure(error))
+            }
+        }
+    }
+
+    /// Apple-Spracherkennung auf dem Gerät (offline wenn möglich, kostenlos, kein API-Key).
+    private static func transcribeLocally(url: URL, completion: @escaping (Result<String, Error>) -> Void) {
+        SFSpeechRecognizer.requestAuthorization { auth in
+            Task { @MainActor in
+                guard auth == .authorized else {
+                    completion(.failure(DictationError.transcriptionFailed("Spracherkennung nicht erlaubt (Einstellungen → Humibeam).")))
+                    return
+                }
+                guard let recognizer = SFSpeechRecognizer(locale: Locale.current) ?? SFSpeechRecognizer(),
+                      recognizer.isAvailable else {
+                    completion(.failure(DictationError.transcriptionFailed("Spracherkennung nicht verfügbar.")))
+                    return
+                }
+                let request = SFSpeechURLRecognitionRequest(url: url)
+                if recognizer.supportsOnDeviceRecognition { request.requiresOnDeviceRecognition = true }
+                recognizer.recognitionTask(with: request) { result, error in
+                    Task { @MainActor in
+                        if let result, result.isFinal {
+                            completion(.success(result.bestTranscription.formattedString
+                                .trimmingCharacters(in: .whitespacesAndNewlines)))
+                        } else if let error {
+                            completion(.failure(DictationError.transcriptionFailed(error.localizedDescription)))
+                        }
+                    }
+                }
             }
         }
     }
