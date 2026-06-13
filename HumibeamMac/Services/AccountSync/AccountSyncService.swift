@@ -53,8 +53,19 @@ final class AccountSyncService {
     /// Wendet einen entschlüsselten Server-Stand lokal an.
     @ObservationIgnored var applyPayload: ((AccountSyncPayload) -> Void)?
 
+    /// Konto-Sync läuft ausschließlich auf humibeam.com (früher alpvis.com).
+    static let defaultSyncURL = "https://humibeam.com/humibeam-sync"
+
     var serverURL: String {
-        get { UserDefaults.standard.string(forKey: "account.url") ?? "https://alpvis.com/humibeam-sync" }
+        get {
+            let stored = UserDefaults.standard.string(forKey: "account.url")
+            // Einmal-Migration: alte alpvis-URL auf humibeam.com umschreiben.
+            if let s = stored, s.contains("alpvis.com") {
+                UserDefaults.standard.set(Self.defaultSyncURL, forKey: "account.url")
+                return Self.defaultSyncURL
+            }
+            return stored ?? Self.defaultSyncURL
+        }
         set { UserDefaults.standard.set(newValue, forKey: "account.url") }
     }
 

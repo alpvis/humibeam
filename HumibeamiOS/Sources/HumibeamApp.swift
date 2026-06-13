@@ -85,8 +85,18 @@ final class PushDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCen
 }
 
 enum PushRegistration {
+    /// Push-Relay läuft ausschließlich auf humibeam.com (früher alpvis.com).
+    static let defaultPushURL = "https://humibeam.com/humibeam-push"
     static var baseURL: String {
-        get { UserDefaults.standard.string(forKey: "push.url") ?? "https://alpvis.com/humibeam-push" }
+        get {
+            let stored = UserDefaults.standard.string(forKey: "push.url")
+            // Einmal-Migration: alte alpvis-URL auf humibeam.com umschreiben.
+            if let s = stored, s.contains("alpvis.com") {
+                UserDefaults.standard.set(defaultPushURL, forKey: "push.url")
+                return defaultPushURL
+            }
+            return stored ?? defaultPushURL
+        }
         set { UserDefaults.standard.set(newValue, forKey: "push.url") }
     }
     static var secret: String {

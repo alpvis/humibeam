@@ -71,7 +71,7 @@ final class MacBeamServer: NSObject {
 
     private func startRelayStandby(secret: Data) {
         guard UserDefaults.standard.object(forKey: "beam.relay.enabled") as? Bool ?? true else { return }
-        let relay = UserDefaults.standard.string(forKey: "beam.relay") ?? BeamCrypto.defaultRelay
+        let relay = BeamCrypto.relay
         let parts = relay.split(separator: ":")
         guard parts.count == 2, let port = UInt16(parts[1]) else { return }
         let conn = NWConnection(host: NWEndpoint.Host(String(parts[0])),

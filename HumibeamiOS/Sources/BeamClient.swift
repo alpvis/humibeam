@@ -65,7 +65,7 @@ final class BeamClient: ObservableObject {
 
     /// Rendezvous über den Humibeam-Server — Verkehr bleibt E2E-verschlüsselt.
     private func connectRelay(secret: Data) {
-        let relay = UserDefaults.standard.string(forKey: "beam.relay") ?? BeamCrypto.defaultRelay
+        let relay = BeamCrypto.relay
         let parts = relay.split(separator: ":")
         guard parts.count == 2, let port = UInt16(parts[1]) else {
             status = "Mac nicht erreichbar."; return

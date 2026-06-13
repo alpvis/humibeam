@@ -27,8 +27,19 @@ enum BeamCrypto {
         SHA256.hash(data: secret).map { String(format: "%02x", $0) }.joined()
     }
 
-    /// Standard-Rendezvous: der Humibeam-Server. In den Apps überschreibbar (beam.relay).
-    static let defaultRelay = "alpvis.com:8797"
+    /// Standard-Rendezvous: der Humibeam-Server (ausschließlich humibeam.com, früher alpvis.com).
+    /// In den Apps überschreibbar (beam.relay).
+    static let defaultRelay = "humibeam.com:8797"
+
+    /// Liest den konfigurierten Relay und migriert eine alte alpvis-Adresse einmalig auf humibeam.com.
+    static var relay: String {
+        let stored = UserDefaults.standard.string(forKey: "beam.relay")
+        if let s = stored, s.contains("alpvis.com") {
+            UserDefaults.standard.set(defaultRelay, forKey: "beam.relay")
+            return defaultRelay
+        }
+        return stored ?? defaultRelay
+    }
 
     static func seal(type: BeamPacketType, payload: Data, key: SymmetricKey) -> Data? {
         var plain = Data([type.rawValue])
