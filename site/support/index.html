@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>humibeam — Remote-Support</title>
+<style>
+  :root{ --panel:#12151c; --line:#232936; --fg:#e8ecf3; --muted:#9aa6b8;
+    --accent:#5b8cff; --green:#34d399; --red:#f87171; --radius:14px; }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:radial-gradient(1200px 700px at 70% -10%,rgba(91,140,255,.12),transparent 60%),#0a0c10;
+    color:var(--fg);font:16px/1.55 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,sans-serif;
+    min-height:100vh;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:760px;margin:0 auto;padding:32px 20px}
+  h1{font-size:22px;font-weight:700;margin-bottom:4px}
+  .sub{color:var(--muted);font-size:14px;margin-bottom:24px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:22px;margin-bottom:16px}
+  label{display:block;font-size:13px;color:var(--muted);margin:12px 0 5px}
+  input{width:100%;padding:11px 13px;background:#0c0f15;border:1px solid var(--line);border-radius:10px;
+    color:var(--fg);font-size:15px;font-family:inherit}
+  input.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:1px;font-size:18px;text-align:center}
+  button{margin-top:16px;width:100%;padding:12px;background:var(--accent);color:#fff;border:0;border-radius:10px;
+    font-size:15px;font-weight:600;cursor:pointer}
+  button.ghost{background:transparent;border:1px solid var(--line);color:var(--fg)}
+  button:hover{filter:brightness(1.08)}
+  .status{margin-top:14px;font-size:13.5px;color:var(--muted)}
+  .status.ok{color:var(--green)} .status.err{color:var(--red)}
+  .row{display:flex;gap:12px} .row>div{flex:1}
+  #session{position:fixed;inset:0;background:#000;display:flex;flex-direction:column}
+  #screen{flex:1;width:100%;height:100%;object-fit:contain;background:#000;cursor:crosshair;outline:none}
+  .bar{display:flex;align-items:center;gap:14px;padding:8px 14px;background:#0c0f15;border-top:1px solid var(--line)}
+  .bar .sp{flex:1}
+  .bar button{margin:0;width:auto;padding:8px 16px}
+  .bar button.end{background:var(--red)}
+  .hint{font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Remote-Support</h1>
+  <div class="sub">Steuere den Mac eines Kunden direkt im Browser — der Kunde nennt dir seine Geräte-ID und den Code.</div>
+
+  <!-- Login -->
+  <div class="card" id="login">
+    <form id="loginForm">
+      <strong>Anmelden</strong>
+      <label>E-Mail</label>
+      <input id="email" type="email" autocomplete="username" required>
+      <label>Passwort</label>
+      <input id="password" type="password" autocomplete="current-password" required>
+      <button type="submit">Anmelden</button>
+    </form>
+  </div>
+
+  <!-- Verbinden -->
+  <div class="card" id="connect" hidden>
+    <form id="connectForm">
+      <strong>Mit Kunde verbinden</strong>
+      <div class="row">
+        <div><label>Geräte-ID</label><input id="deviceId" class="mono" placeholder="000-000-000" required></div>
+        <div><label>Code</label><input id="code" class="mono" placeholder="000000" maxlength="6" required></div>
+      </div>
+      <button type="submit">Verbinden</button>
+      <div class="hint" style="margin-top:10px">Der Kunde muss die Verbindung an seinem Mac bestätigen.</div>
+    </form>
+  </div>
+
+  <div class="status" id="status"></div>
+</div>
+
+<!-- Aktive Sitzung (Vollbild) -->
+<div id="session" hidden>
+  <video id="screen" autoplay playsinline tabindex="0"></video>
+  <div class="bar">
+    <span class="hint">Du steuerst den Mac des Kunden. Klicks, Tastatur und Scrollen werden übertragen.</span>
+    <span class="sp"></span>
+    <button class="end" id="hangup">Verbindung beenden</button>
+  </div>
+</div>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>

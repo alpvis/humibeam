@@ -115,12 +115,32 @@ function endSession(sessionId, reason) {
   log(`Sitzung beendet ${sessionId} (${reason})`);
 }
 
-// --- HTTP (nur Health) ---
-const httpServer = http.createServer((req, res) => {
+// Zeitbegrenzte TURN-Zugangsdaten (coturn `use-auth-secret`/REST-API): username = ablaufZeit,
+// password = base64(HMAC-SHA1(secret, username)). Gültig config.turnTtl Sekunden.
+function turnCredentials() {
+  const servers = [{ urls: 'stun:stun.l.google.com:19302' }];
+  if (config.turnSecret && config.turnUrls) {
+    const ttl = config.turnTtl || 600;
+    const username = String(Math.floor(Date.now() / 1000) + ttl);
+    const credential = crypto.createHmac('sha1', config.turnSecret).update(username).digest('base64');
+    servers.push({ urls: config.turnUrls, username, credential });
+  }
+  return servers;
+}
+
+// --- HTTP (Health + ICE-Konfiguration) ---
+const httpServer = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   const route = url.pathname.replace(/^\/humibeam-support/, '') || '/';
   if (req.method === 'GET' && route === '/health') {
     const body = JSON.stringify({ ok: true, devices: devices.size, sessions: sessions.size });
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(body);
+  }
+  if (req.method === 'GET' && route === '/ice') {
+    const tok = (req.headers.authorization || '').replace(/^Bearer\s+/, '');
+    if (!(await verifySupporter(tok))) { res.writeHead(401); return res.end('{"error":"nicht angemeldet"}'); }
+    const body = JSON.stringify({ iceServers: turnCredentials() });
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(body);
   }
