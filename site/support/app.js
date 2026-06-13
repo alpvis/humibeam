@@ -1,6 +1,6 @@
 // Humibeam Remote-Support — Supporter-Seite (Browser).
 // Login (Zero-Knowledge) → ID+Code → WebRTC: Mac-Bildschirm empfangen, Maus/Tastatur senden.
-import { deriveKeys } from './crypto.js';
+import { deriveKeys, randomSaltHex } from './crypto.js';
 
 const SYNC = '/humibeam-sync';
 const WS_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/humibeam-support/ws';
@@ -13,22 +13,49 @@ function status(msg, kind = '') { const e = $('status'); e.textContent = msg; e.
 
 let token = null, ws = null, pc = null, channel = null, sessionId = null;
 
-// ---- 1) Login gegen das Humibeam-Konto (gleiche Konten wie die App) ----
+// ---- 1) Login bzw. Registrieren gegen das Humibeam-Konto (gleiche Konten wie die App) ----
+let mode = 'login';
+$('toggleMode').addEventListener('click', () => {
+  mode = mode === 'login' ? 'register' : 'login';
+  const reg = mode === 'register';
+  $('authTitle').textContent = reg ? 'Support-Konto anlegen' : 'Anmelden';
+  $('authSubmit').textContent = reg ? 'Konto anlegen' : 'Anmelden';
+  $('toggleMode').textContent = reg ? 'Ich habe schon ein Konto' : 'Neues Support-Konto anlegen';
+  $('pwHint').hidden = !reg;
+  $('password').autocomplete = reg ? 'new-password' : 'current-password';
+  status('');
+});
+
 $('loginForm').addEventListener('submit', async (e) => {
   e.preventDefault();
-  status('Melde an…');
+  const email = $('email').value.trim().toLowerCase();
+  const password = $('password').value;
   try {
-    const email = $('email').value.trim().toLowerCase();
-    const saltRes = await fetch(`${SYNC}/salt?email=${encodeURIComponent(email)}`);
-    if (!saltRes.ok) throw new Error('Konto nicht gefunden');
-    const { kdfSalt } = await saltRes.json();
-    const { authKeyHex } = await deriveKeys($('password').value, kdfSalt);
-    const loginRes = await fetch(`${SYNC}/login`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, authKey: authKeyHex }),
-    });
-    if (!loginRes.ok) throw new Error('Anmeldung fehlgeschlagen');
-    token = (await loginRes.json()).token;
+    if (mode === 'register') {
+      if (password.length < 8) throw new Error('Passwort braucht mindestens 8 Zeichen');
+      status('Lege Konto an…');
+      const kdfSalt = randomSaltHex();
+      const { authKeyHex } = await deriveKeys(password, kdfSalt);
+      const res = await fetch(`${SYNC}/register`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, kdfSalt, authKey: authKeyHex }),
+      });
+      if (res.status === 409) throw new Error('Konto existiert schon — bitte anmelden');
+      if (!res.ok) throw new Error('Registrierung fehlgeschlagen');
+      token = (await res.json()).token;
+    } else {
+      status('Melde an…');
+      const saltRes = await fetch(`${SYNC}/salt?email=${encodeURIComponent(email)}`);
+      if (!saltRes.ok) throw new Error('Konto nicht gefunden');
+      const { kdfSalt } = await saltRes.json();
+      const { authKeyHex } = await deriveKeys(password, kdfSalt);
+      const loginRes = await fetch(`${SYNC}/login`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, authKey: authKeyHex }),
+      });
+      if (!loginRes.ok) throw new Error('Anmeldung fehlgeschlagen');
+      token = (await loginRes.json()).token;
+    }
     await loadIceConfig();
     show('connect');
     status('Angemeldet als ' + email, 'ok');

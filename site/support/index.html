@@ -40,15 +40,16 @@
   <h1>Remote-Support</h1>
   <div class="sub">Steuere den Mac eines Kunden direkt im Browser — der Kunde nennt dir seine Geräte-ID und den Code.</div>
 
-  <!-- Login -->
+  <!-- Login / Registrieren -->
   <div class="card" id="login">
     <form id="loginForm">
-      <strong>Anmelden</strong>
+      <strong id="authTitle">Anmelden</strong>
       <label>E-Mail</label>
       <input id="email" type="email" autocomplete="username" required>
-      <label>Passwort</label>
+      <label>Passwort <span id="pwHint" class="hint" hidden>(mind. 8 Zeichen)</span></label>
       <input id="password" type="password" autocomplete="current-password" required>
-      <button type="submit">Anmelden</button>
+      <button type="submit" id="authSubmit">Anmelden</button>
+      <button type="button" id="toggleMode" class="ghost" style="margin-top:10px">Neues Support-Konto anlegen</button>
     </form>
   </div>
 
