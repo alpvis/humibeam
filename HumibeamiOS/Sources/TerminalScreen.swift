@@ -20,6 +20,11 @@ struct TerminalScreen: View {
     @State private var showsAIPanel = false
     @State private var suggestIntentActive = false
     @State private var suggestIntent = ""
+    @State private var showsSearch = false
+    @State private var searchTerm = ""
+    @FocusState private var searchFocused: Bool
+    @State private var queueActive = false
+    @State private var queuePrompt = ""
 
     var body: some View {
         if let session = model.session(withID: sessionID) {
@@ -38,6 +43,10 @@ struct TerminalScreen: View {
                 sessionBar(current: session)
             }
 
+            if showsSearch {
+                searchBar(controller)
+            }
+
             TerminalHostView(controller: controller)
                 .ignoresSafeArea(.container, edges: .bottom)
 
@@ -49,7 +58,11 @@ struct TerminalScreen: View {
         .background(Color(model.theme.background))
         .overlay(alignment: .bottom) {
             if let approval = controller.approval {
-                ApprovalCard(approval: approval, controller: controller)
+                let waiting = model.sessions.filter { $0.controller.approval != nil }
+                ApprovalCard(approval: approval, controller: controller,
+                             queuePosition: waiting.firstIndex { $0.id == session.id }.map { $0 + 1 },
+                             queueTotal: waiting.count,
+                             onResolved: { advanceToNextWaiting(after: session) })
                     .padding(.horizontal, 10)
                     .padding(.bottom, 56)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -80,6 +93,13 @@ struct TerminalScreen: View {
                     .disabled(!controller.isConnected)
                     .keyboardShortcut("d", modifiers: [.command, .shift])
 
+                Button {
+                    withAnimation(.snappy(duration: 0.2)) { showsSearch.toggle() }
+                    if showsSearch { searchFocused = true }
+                    else { controller.clearSearch(); searchTerm = "" }
+                } label: { Image(systemName: "magnifyingglass") }
+                    .keyboardShortcut("f", modifiers: .command)
+
                 Menu {
                     Section("KI") {
                         Button {
@@ -105,6 +125,10 @@ struct TerminalScreen: View {
                     Button {
                         showsHistory = true
                     } label: { Label("Befehls-Verlauf…", systemImage: "clock.arrow.circlepath") }
+                    Button {
+                        queueActive = true
+                    } label: { Label("Auftrag einreihen…", systemImage: "text.line.first.and.arrowtriangle.forward") }
+                        .disabled(!controller.isConnected)
                     Divider()
                     Button {
                         Task { await ImagePaste.pasteFromClipboard(into: controller) }
@@ -159,6 +183,16 @@ struct TerminalScreen: View {
             }
             Button("Abbrechen", role: .cancel) {}
         }
+        .alert("Auftrag einreihen", isPresented: $queueActive) {
+            TextField("Prompt für Claude…", text: $queuePrompt)
+            Button("Einreihen") {
+                controller.enqueuePrompt(queuePrompt)
+                queuePrompt = ""
+            }
+            Button("Abbrechen", role: .cancel) { queuePrompt = "" }
+        } message: {
+            Text("Wird abgeschickt, sobald Claude den aktuellen Auftrag beendet hat. Mehrere Aufträge laufen nacheinander.")
+        }
         .onChange(of: photoItem) { _, item in
             guard let item else { return }
             Task {
@@ -184,6 +218,46 @@ struct TerminalScreen: View {
                                  "hostName": session.host.displayName]
             activity.isEligibleForHandoff = true
         }
+    }
+
+    /// Nach einer Freigabe-Entscheidung zur nächsten wartenden Sitzung springen (Durchwischen).
+    private func advanceToNextWaiting(after current: TerminalSession) {
+        guard let next = model.sessions.first(where: {
+            $0.id != current.id && $0.controller.approval != nil
+        }) else { return }
+        model.requestedSessionID = next.id
+    }
+
+    /// Suchleiste über dem Terminal: tippt durch die Treffer im (10.000-Zeilen-)Scrollback.
+    private func searchBar(_ controller: TerminalController) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.secondary).font(.caption)
+            TextField("Im Terminal suchen…", text: $searchTerm)
+                .textFieldStyle(.plain)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .focused($searchFocused)
+                .submitLabel(.search)
+                .onSubmit { _ = controller.findNext(searchTerm) }
+            Button {
+                _ = controller.findPrevious(searchTerm)
+            } label: { Image(systemName: "chevron.up") }
+                .disabled(searchTerm.isEmpty)
+            Button {
+                _ = controller.findNext(searchTerm)
+            } label: { Image(systemName: "chevron.down") }
+                .disabled(searchTerm.isEmpty)
+            Button {
+                withAnimation(.snappy(duration: 0.2)) { showsSearch = false }
+                controller.clearSearch()
+                searchTerm = ""
+                _ = controller.terminalView.becomeFirstResponder()
+            } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+        }
+        .font(.callout)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(.bar)
     }
 
     /// Leiste mit allen lebenden Sitzungen (alle Hosts) — Tap wechselt.
@@ -252,6 +326,21 @@ struct TerminalScreen: View {
                 .lineLimit(1)
                 .foregroundStyle(.secondary)
             Spacer()
+            if !controller.promptQueue.isEmpty {
+                Menu {
+                    ForEach(Array(controller.promptQueue.enumerated()), id: \.offset) { _, prompt in
+                        Text(prompt).lineLimit(1)
+                    }
+                    Divider()
+                    Button(role: .destructive) {
+                        controller.clearPromptQueue()
+                    } label: { Label("Warteschlange leeren", systemImage: "trash") }
+                } label: {
+                    Label("\(controller.promptQueue.count)", systemImage: "text.line.first.and.arrowtriangle.forward")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.purple)
+                }
+            }
             if controller.claudeDetected {
                 // Claude-Status Plus: liest/bearbeitet/führt aus/wartet — live aus dem Stream.
                 Label(controller.activity.label, systemImage: statusSymbol(controller.activity))
@@ -300,11 +389,27 @@ private final class ControllerHolder: ObservableObject {
 struct ApprovalCard: View {
     let approval: ClaudeApproval
     let controller: TerminalController
+    /// Position dieser Sitzung in der Warteschlange (1-basiert) und Gesamtzahl wartender Sitzungen.
+    var queuePosition: Int? = nil
+    var queueTotal: Int = 1
+    /// Wird nach Erlauben/Immer/Ablehnen aufgerufen — springt zur nächsten wartenden Sitzung.
+    var onResolved: (() -> Void)? = nil
 
     private var tint: Color { approval.looksDangerous ? .red : .cyan }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if queueTotal > 1, let pos = queuePosition {
+                HStack(spacing: 6) {
+                    Image(systemName: "rectangle.stack.fill")
+                    Text("Freigabe \(pos) von \(queueTotal)")
+                    Spacer()
+                    Text("nach der Antwort geht's zur nächsten")
+                        .foregroundStyle(.secondary)
+                }
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.orange)
+            }
             HStack(spacing: 8) {
                 Image(systemName: approval.action.symbol)
                 Text(approval.action.label).font(.subheadline.weight(.semibold))
@@ -350,6 +455,7 @@ struct ApprovalCard: View {
             HStack(spacing: 8) {
                 Button {
                     controller.approve()
+                    onResolved?()
                 } label: {
                     Label("Erlauben", systemImage: "checkmark")
                         .frame(maxWidth: .infinity)
@@ -360,6 +466,7 @@ struct ApprovalCard: View {
                 if approval.allowAlways {
                     Button {
                         controller.approveAlways()
+                        onResolved?()
                     } label: {
                         Text("Immer")
                             .frame(maxWidth: .infinity)
@@ -369,6 +476,7 @@ struct ApprovalCard: View {
 
                 Button {
                     controller.deny()
+                    onResolved?()
                 } label: {
                     Label("Ablehnen", systemImage: "xmark")
                         .frame(maxWidth: .infinity)

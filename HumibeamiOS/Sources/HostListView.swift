@@ -272,6 +272,7 @@ struct SettingsView: View {
     @AppStorage("dictation.local") private var localDictation = false
     @AppStorage("display.keepAwake") private var keepAwake = false
     @AppStorage("keyboard.autoShow") private var keyboardAutoShow = true
+    @AppStorage("alerts.enabled") private var alertsEnabled = true
 
     var body: some View {
         @Bindable var model = model
@@ -323,6 +324,14 @@ struct SettingsView: View {
                     Text("Sicherheit")
                 } footer: {
                     Text("Beim Öffnen der App wird Face ID/Touch ID verlangt. Deine SSH-Schlüssel liegen zusätzlich im Geräte-Keychain.")
+                }
+
+                Section {
+                    Toggle("Bei kritischen Servern warnen", isOn: $alertsEnabled)
+                } header: {
+                    Text("Server-Alerts")
+                } footer: {
+                    Text("Mitteilung, sobald Last, Speicher, Festplatte oder Zombie-Prozesse eines verbundenen Servers den kritischen Bereich erreichen. Nur beim Übergang, nicht wiederholt.")
                 }
 
                 Section {

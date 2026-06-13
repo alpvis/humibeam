@@ -205,6 +205,8 @@ final class AppModel {
     @ObservationIgnored private var healthTimer: Timer?
     @ObservationIgnored private var activityTimer: Timer?
     @ObservationIgnored private let liveActivities = LiveActivityManager()
+    /// Hosts, die gerade im kritischen Bereich sind — für flankengetriggerte Alerts (nur beim Übergang melden).
+    @ObservationIgnored private var criticalHosts: Set<UUID> = []
 
     init() {
         defer { AppModel.shared = self }
@@ -361,16 +363,43 @@ final class AppModel {
             guard !seen.contains(session.host.id) else { continue }
             seen.insert(session.host.id)
             guard let conn = session.controller.connection else { continue }
-            let hostID = session.host.id
+            let host = session.host
+            let hostID = host.id
             Task { [weak self] in
                 guard let (status, out, _) = try? await conn.exec(ServerStats.command), status == 0,
                       let text = String(data: out, encoding: .utf8),
                       let parsed = ServerStats.parse(text) else { return }
                 self?.stats[hostID] = parsed
+                self?.checkServerAlert(host: host, stats: parsed)
                 self?.publishSnapshot()
             }
         }
         publishSnapshot()
+    }
+
+    // MARK: - Server-Alerts (Push wenn Last/Platte/Zombies kritisch werden)
+
+    /// Flankengetriggert: meldet nur den Übergang OK → kritisch, nicht jeden Poll im roten Bereich.
+    private func checkServerAlert(host: SSHHost, stats: ServerStats) {
+        guard UserDefaults.standard.object(forKey: "alerts.enabled") as? Bool ?? true else { return }
+        let nowCritical = stats.isCritical
+        let wasCritical = criticalHosts.contains(host.id)
+        if nowCritical, !wasCritical {
+            criticalHosts.insert(host.id)
+            postServerAlert(host: host, stats: stats)
+        } else if !nowCritical, wasCritical {
+            criticalHosts.remove(host.id)
+        }
+    }
+
+    private func postServerAlert(host: SSHHost, stats: ServerStats) {
+        let content = UNMutableNotificationContent()
+        content.title = "\u{26A0}\u{FE0F} \(host.displayName) kritisch"
+        content.body = stats.summary
+        content.sound = .default
+        let request = UNNotificationRequest(identifier: "alert-\(host.id.uuidString)-\(UUID().uuidString)",
+                                            content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
     }
 
     // MARK: - Status-Snapshot (Widget, Siri, Watch)

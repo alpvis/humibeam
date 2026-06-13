@@ -29,6 +29,25 @@ final class TerminalController: NSObject, TerminalViewDelegate, ObservableObject
     /// True while Claude Code is actively working ("esc to interrupt" visible).
     private var claudeBusy = false
     var onClaudeIdle: (() -> Void)?
+
+    /// Aufträge, die nacheinander abgearbeitet werden: sobald Claude idle wird, geht der nächste raus.
+    @Published private(set) var promptQueue: [String] = []
+
+    /// Reiht einen Prompt ein. Ist Claude gerade frei, startet er sofort, sonst wartet er.
+    func enqueuePrompt(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        promptQueue.append(trimmed)
+        if !claudeBusy, isConnected { drainPromptQueue() }
+    }
+
+    func clearPromptQueue() { promptQueue.removeAll() }
+
+    private func drainPromptQueue() {
+        guard !promptQueue.isEmpty else { return }
+        let next = promptQueue.removeFirst()
+        sendToShell(next.hasSuffix("\n") ? next : next + "\n")
+    }
     private static let pathRegex = try? NSRegularExpression(
         pattern: #"(?:Update|Read|Write|Edit|MultiEdit|Create|Search)\(([^)\n]{1,200})\)"#)
 
@@ -53,6 +72,8 @@ final class TerminalController: NSObject, TerminalViewDelegate, ObservableObject
         self.terminalView = BeamTerminalView(frame: CGRect(x: 0, y: 0, width: 390, height: 600))
         super.init()
         terminalView.terminalDelegate = self
+        // Tiefer Verlauf: 10.000 Zeilen statt SwiftTerms 500 — weit zurückscrollen + durchsuchen.
+        terminalView.getTerminal().changeScrollback(10_000)
     }
 
     // MARK: - Lifecycle
@@ -192,6 +213,14 @@ final class TerminalController: NSObject, TerminalViewDelegate, ObservableObject
         Task { await conn?.close() }
     }
 
+    // MARK: - Suche im Scrollback (SwiftTerms TerminalViewSearch)
+
+    @discardableResult
+    func findNext(_ term: String) -> Bool { terminalView.findNext(term) }
+    @discardableResult
+    func findPrevious(_ term: String) -> Bool { terminalView.findPrevious(term) }
+    func clearSearch() { terminalView.clearSearch() }
+
     func setFontSize(_ size: CGFloat) {
         terminalView.font = UIFont.monospacedSystemFont(ofSize: size, weight: .regular)
     }
@@ -267,7 +296,11 @@ final class TerminalController: NSObject, TerminalViewDelegate, ObservableObject
         if busy != claudeBusy {
             let wasBusy = claudeBusy
             claudeBusy = busy
-            if wasBusy && !busy { onClaudeIdle?() }
+            if wasBusy && !busy {
+                onClaudeIdle?()
+                // Nächsten eingereihten Auftrag abschicken, sobald Claude fertig ist.
+                if !promptQueue.isEmpty { drainPromptQueue() }
+            }
         }
     }
 

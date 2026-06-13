@@ -104,6 +104,8 @@ final class TerminalSessionController: NSObject, TerminalViewDelegate {
         super.init()
         terminalView.terminalDelegate = self
         terminalView.configureNativeColors()
+        // Tiefer Verlauf: 10.000 Zeilen statt SwiftTerms 500 — weit zurückscrollen + durchsuchen.
+        terminalView.getTerminal().changeScrollback(10_000)
         if let hv = terminalView as? HumibeamTerminalView {
             hv.pasteInterceptor = { [weak self] in self?.pasteBridge.handlePasteFromClipboard() ?? false }
             hv.fileDropHandler = { [weak self] urls in self?.pasteBridge.handleDroppedFiles(urls) ?? false }
