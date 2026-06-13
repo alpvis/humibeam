@@ -186,8 +186,10 @@ wss.on('connection', (ws) => {
       const dev = devices.get(ctx.deviceId);
       if (dev) { dev.status = 'connected'; dev.sessionId = msg.sessionId; rotateCode(dev); }
       // Beide Seiten dürfen jetzt Signaling austauschen; Supporter ist der WebRTC-Anbieter (Offer).
-      send(s.supWs, { type: 'session-start', sessionId: msg.sessionId, role: 'offerer' });
-      send(ws, { type: 'session-start', sessionId: msg.sessionId, role: 'answerer' });
+      // iceServers mitschicken, damit auch der nicht-eingeloggte Host (Mac) TURN nutzen kann.
+      const ice = turnCredentials();
+      send(s.supWs, { type: 'session-start', sessionId: msg.sessionId, role: 'offerer', iceServers: ice });
+      send(ws, { type: 'session-start', sessionId: msg.sessionId, role: 'answerer', iceServers: ice });
       audit({ event: 'session-accepted', sessionId: msg.sessionId, deviceId: ctx.deviceId,
               supporter: s.supporterEmail, at: new Date().toISOString() });
       log(`Sitzung aktiv ${msg.sessionId}`);
