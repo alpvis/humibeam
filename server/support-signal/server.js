@@ -237,9 +237,15 @@ wss.on('connection', (ws) => {
     // ----- Signaling-Relay (SDP/ICE) zwischen den beiden Seiten -----
     if (msg.type === 'signal') {
       const s = sessions.get(msg.sessionId);
-      if (!s || s.status !== 'active') return;
+      if (!s) { log(`signal verworfen: unbekannte Session ${msg.sessionId}`); return; }
+      if (s.status !== 'active') { log(`signal verworfen: Session ${msg.sessionId} status=${s.status}`); return; }
       const dev = devices.get(s.deviceId);
       const target = ctx.role === 'supporter' ? (dev && dev.ws) : s.supWs;
+      // Diagnose: was fließt wohin?
+      const kind = msg.data && msg.data.sdp ? `sdp:${msg.data.sdp.type}`
+        : (msg.data && msg.data.candidate ? 'ice' : 'unbekannt');
+      const ok = target && target.readyState === target.OPEN;
+      log(`signal ${ctx.role}→${ctx.role === 'supporter' ? 'host' : 'supporter'} [${kind}] ${ok ? 'relayed' : 'ZIEL-WEG'}`);
       send(target, { type: 'signal', sessionId: msg.sessionId, data: msg.data });
       return;
     }
