@@ -1,7 +1,7 @@
 {
-  "version": "5.2",
-  "build": 52,
-  "dmgURL": "https://github.com/alpvis/humibeam/releases/download/v5.2/Humibeam.dmg",
-  "notes": "Mac 5.2: Textauswahl im Terminal jetzt auch moeglich, waehrend eine mausgewahre App laeuft (Claude Code, tmux, vim). Option (Alt) gedrueckt halten und mit der Maus ziehen markiert lokal - danach mit Cmd+C kopieren, wie in iTerm/Terminal.app.",
+  "version": "5.3",
+  "build": 53,
+  "dmgURL": "https://github.com/alpvis/humibeam/releases/download/v5.3/Humibeam.dmg",
+  "notes": "Mac 5.3: Alle Dienste laufen jetzt ausschliesslich auf humibeam.com - Konto-Sync, Push und MacBeam-Tunnel sind von alpvis.com auf humibeam.com umgezogen (ein Server, ein Konto fuer App und Remote-Support). Bestehende Einstellungen werden automatisch migriert.",
   "minOS": "13.0"
 }
