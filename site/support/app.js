@@ -15,16 +15,18 @@ let token = null, ws = null, pc = null, channel = null, sessionId = null;
 
 // ---- 1) Login bzw. Registrieren gegen das Humibeam-Konto (gleiche Konten wie die App) ----
 let mode = 'login';
-$('toggleMode').addEventListener('click', () => {
-  mode = mode === 'login' ? 'register' : 'login';
-  const reg = mode === 'register';
-  $('authTitle').textContent = reg ? 'Support-Konto anlegen' : 'Anmelden';
+function setMode(m) {
+  mode = m;
+  const reg = m === 'register';
+  $('tabLogin').classList.toggle('active', !reg);
+  $('tabRegister').classList.toggle('active', reg);
   $('authSubmit').textContent = reg ? 'Konto anlegen' : 'Anmelden';
-  $('toggleMode').textContent = reg ? 'Ich habe schon ein Konto' : 'Neues Support-Konto anlegen';
   $('pwHint').hidden = !reg;
   $('password').autocomplete = reg ? 'new-password' : 'current-password';
   status('');
-});
+}
+$('tabLogin').addEventListener('click', () => setMode('login'));
+$('tabRegister').addEventListener('click', () => setMode('register'));
 
 $('loginForm').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -110,14 +112,28 @@ function reason(r) {
 async function startWebRTC() {
   show('session');
   status('Stelle Verbindung her…');
+  overlay('Warte auf den Bildschirm des Kunden…', 'Verbindung wird aufgebaut');
+  $('connState').textContent = 'verbinde…';
   pc = new RTCPeerConnection({ iceServers: ICE });
   pc.addTransceiver('video', { direction: 'recvonly' });
   channel = pc.createDataChannel('input', { ordered: true });
   channel.onopen = () => status('Verbunden — du steuerst den Mac', 'ok');
 
-  pc.ontrack = (ev) => { $('screen').srcObject = ev.streams[0]; };
+  let gotVideo = false;
+  pc.ontrack = (ev) => {
+    gotVideo = true;
+    $('screen').srcObject = ev.streams[0];
+    $('videoOverlay').hidden = true;
+  };
   pc.onicecandidate = (ev) => {
     if (ev.candidate) ws.send(JSON.stringify({ type: 'signal', sessionId, data: { candidate: ev.candidate } }));
+  };
+  pc.oniceconnectionstatechange = () => {
+    $('connState').textContent = 'ICE: ' + pc.iceConnectionState;
+    if (pc.iceConnectionState === 'failed') {
+      overlay('Verbindung fehlgeschlagen',
+        'Kein Netzwerkpfad (NAT/Firewall). TURN-Relay sollte greifen — prüfe die Internetverbindung.');
+    }
   };
   pc.onconnectionstatechange = () => {
     if (['failed', 'disconnected', 'closed'].includes(pc.connectionState)) teardown('Verbindung verloren');
@@ -126,6 +142,22 @@ async function startWebRTC() {
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
   ws.send(JSON.stringify({ type: 'signal', sessionId, data: { sdp: pc.localDescription } }));
+
+  // Diagnose: wenn nach 8 s kein Video-Track ankam, dem Supporter sagen, wo es vermutlich klemmt.
+  setTimeout(() => {
+    if (!gotVideo) {
+      overlay('Kein Video empfangen',
+        'Häufigste Ursache: Bildschirmaufnahme am Mac nicht erlaubt — der Kunde muss sie in den ' +
+        'Systemeinstellungen erteilen UND die App „Humibeam Support" danach neu starten. ' +
+        '(ICE-Status unten zeigt, ob die Verbindung steht.)');
+    }
+  }, 8000);
+}
+
+function overlay(title, hint) {
+  $('videoOverlay').hidden = false;
+  $('overlayTitle').textContent = title;
+  $('overlayHint').textContent = hint;
 }
 
 async function onSignal(data) {

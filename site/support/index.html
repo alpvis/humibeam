@@ -23,11 +23,18 @@
     font-size:15px;font-weight:600;cursor:pointer}
   button.ghost{background:transparent;border:1px solid var(--line);color:var(--fg)}
   button:hover{filter:brightness(1.08)}
+  .tabs{display:flex;gap:0;margin-bottom:18px;background:#0c0f15;border:1px solid var(--line);border-radius:10px;padding:4px}
+  .tab{flex:1;margin:0;padding:9px;background:transparent;color:var(--muted);font-weight:600;border-radius:7px}
+  .tab.active{background:var(--accent);color:#fff}
+  .tab:hover{filter:none}
+  #videoOverlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:10px;color:var(--muted);text-align:center;padding:24px;pointer-events:none}
+  #videoOverlay .big{font-size:15px;color:var(--fg)}
   .status{margin-top:14px;font-size:13.5px;color:var(--muted)}
   .status.ok{color:var(--green)} .status.err{color:var(--red)}
   .row{display:flex;gap:12px} .row>div{flex:1}
   #session{position:fixed;inset:0;background:#000;display:flex;flex-direction:column}
-  #screen{flex:1;width:100%;height:100%;object-fit:contain;background:#000;cursor:crosshair;outline:none}
+  #screen{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;cursor:crosshair;outline:none}
   .bar{display:flex;align-items:center;gap:14px;padding:8px 14px;background:#0c0f15;border-top:1px solid var(--line)}
   .bar .sp{flex:1}
   .bar button{margin:0;width:auto;padding:8px 16px}
@@ -42,14 +49,16 @@
 
   <!-- Login / Registrieren -->
   <div class="card" id="login">
+    <div class="tabs">
+      <button type="button" id="tabLogin" class="tab active">Anmelden</button>
+      <button type="button" id="tabRegister" class="tab">Registrieren</button>
+    </div>
     <form id="loginForm">
-      <strong id="authTitle">Anmelden</strong>
       <label>E-Mail</label>
       <input id="email" type="email" autocomplete="username" required>
       <label>Passwort <span id="pwHint" class="hint" hidden>(mind. 8 Zeichen)</span></label>
       <input id="password" type="password" autocomplete="current-password" required>
       <button type="submit" id="authSubmit">Anmelden</button>
-      <button type="button" id="toggleMode" class="ghost" style="margin-top:10px">Neues Support-Konto anlegen</button>
     </form>
   </div>
 
@@ -84,10 +93,17 @@
 
 <!-- Aktive Sitzung (Vollbild) -->
 <div id="session" hidden>
-  <video id="screen" autoplay playsinline tabindex="0"></video>
+  <div style="flex:1;position:relative;min-height:0">
+    <video id="screen" autoplay playsinline muted tabindex="0"></video>
+    <div id="videoOverlay">
+      <div class="big" id="overlayTitle">Warte auf den Bildschirm des Kunden…</div>
+      <div class="hint" id="overlayHint">Verbindung wird aufgebaut</div>
+    </div>
+  </div>
   <div class="bar">
-    <span class="hint">Du steuerst den Mac des Kunden. Klicks, Tastatur und Scrollen werden übertragen.</span>
+    <span class="hint" id="connState">verbinde…</span>
     <span class="sp"></span>
+    <span class="hint">Klicks, Tastatur und Scrollen werden übertragen</span>
     <button class="end" id="hangup">Verbindung beenden</button>
   </div>
 </div>
