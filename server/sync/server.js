@@ -159,6 +159,14 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { token: newToken(acct.id) });
     }
 
+    // Token-Prüfung für andere Humibeam-Dienste (z. B. Support-Signaling: "Supporter muss eingeloggt sein").
+    if (req.method === 'GET' && route === '/me') {
+      const auth = accountForToken(req);
+      if (!auth) return send(res, 401, { error: 'nicht angemeldet' });
+      const email = Object.keys(accounts).find((e) => accounts[e].id === auth.accountId);
+      return send(res, 200, { accountId: auth.accountId, email });
+    }
+
     if (req.method === 'POST' && route === '/logout') {
       const auth = accountForToken(req);
       if (auth) { delete tokens[auth.token]; saveJSON(TOKENS_FILE, tokens); }

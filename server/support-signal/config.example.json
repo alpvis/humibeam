@@ -1,0 +1,8 @@
+{
+  "port": 8796,
+  "bindHost": "127.0.0.1",
+  "wsPath": "/humibeam-support/ws",
+  "syncVerifyUrl": "http://127.0.0.1:8798/me",
+  "codeTtlSeconds": 300,
+  "sessionMaxSeconds": 14400
+}

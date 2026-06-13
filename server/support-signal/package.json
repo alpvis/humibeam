@@ -1,0 +1,10 @@
+{
+  "name": "humibeam-support-signal",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Humibeam Remote-Support — WebRTC-Signaling, Geräte-ID/Einmalcode, Session-Audit",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": { "start": "node server.js" },
+  "dependencies": { "ws": "^8.18.0" }
+}
