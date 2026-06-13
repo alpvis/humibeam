@@ -19,6 +19,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var statusItem: NSStatusItem!
     private var popover: NSPopover!
     private var pasteMonitor: Any?
+    private var mouseSelectMonitor: Any?
+    private weak var optionSelectTerm: TerminalView?
     private var sessionsMenu: NSMenu?
     private let menuBarStatusController = MenuBarStatusController()
     let appState = AppState()
@@ -85,6 +87,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                let term = NSApp.keyWindow?.firstResponder as? TerminalView {
                 term.paste(term) // HumibeamTerminalView → image upload; plain TerminalView → text paste
                 return nil // consumed: don't let SwiftUI/menu double-handle it
+            }
+            return event
+        }
+
+        // Textauswahl trotz Maus-Erfassung: läuft im Terminal eine mausgewahre App (Claude Code,
+        // tmux, vim …), leitet SwiftTerm jeden Klick/Zug an die App weiter und startet nie eine
+        // lokale Auswahl → man kann nichts markieren und folglich nichts mit ⌘C kopieren. Wie in
+        // iTerm/Terminal.app erzwingt gedrücktes Option (⌥) beim Ziehen die lokale Auswahl: für die
+        // Dauer der Geste schalten wir die Maus-Weiterleitung ab. (mouseDown/mouseUp sind in SwiftTerm
+        // `public`, nicht `open`, daher nicht überschreibbar — deshalb hier per Event-Monitor.)
+        mouseSelectMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseUp]) { [weak self] event in
+            guard let self else { return event }
+            if event.type == .leftMouseDown {
+                if event.modifierFlags.contains(.option),
+                   let term = NSApp.keyWindow?.firstResponder as? TerminalView,
+                   term.allowMouseReporting {
+                    term.allowMouseReporting = false
+                    self.optionSelectTerm = term
+                }
+            } else if let term = self.optionSelectTerm { // .leftMouseUp
+                self.optionSelectTerm = nil
+                // erst nach der View-eigenen mouseUp die Auswahl finalisieren lassen, dann zurückschalten
+                DispatchQueue.main.async { term.allowMouseReporting = true }
             }
             return event
         }
