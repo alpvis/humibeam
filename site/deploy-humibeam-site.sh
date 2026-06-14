@@ -22,12 +22,20 @@ cd "$INFRA" || die "kein $INFRA"
 [ -f "$CONF" ] || die "fehlt: $CONF"
 [ -f "$COMPOSE" ] || die "fehlt: $COMPOSE"
 
-# 1) Landing-Dateien
+# 1) Landing-Dateien + Unterseiten (Konto, Admin, Support)
 echo "▶︎ 1) Landing nach $LANDING_HOST"
 mkdir -p "$LANDING_HOST"
 curl -fsSL "$RAW/index.html" -o "$LANDING_HOST/index.html" || die "index.html download"
 curl -fsSL "$DMG_URL"        -o "$LANDING_HOST/Humibeam.dmg" || die "dmg download"
-echo "   index.html $(wc -c <"$LANDING_HOST/index.html")B · DMG $(du -h "$LANDING_HOST/Humibeam.dmg"|cut -f1)"
+# Unterordner-Dateien (Konto-Bereich, Betreiber-Admin, Remote-Support-Browser-Client)
+SUBFILES="account/index.html account/app.js account/crypto.js \
+          admin/index.html admin/app.js \
+          support/index.html support/app.js support/crypto.js"
+for f in $SUBFILES; do
+  mkdir -p "$LANDING_HOST/$(dirname "$f")"
+  curl -fsSL "$RAW/$f" -o "$LANDING_HOST/$f" || die "$f download"
+done
+echo "   index.html $(wc -c <"$LANDING_HOST/index.html")B · DMG $(du -h "$LANDING_HOST/Humibeam.dmg"|cut -f1) · Unterseiten: account, admin, support"
 
 # 2a) compose: ro-Mount ergänzen (idempotent)
 if ! grep -q "humibeam-landing:/var/www/humibeam/landing" "$COMPOSE"; then
@@ -107,9 +115,9 @@ else
   echo "▶︎ 4) Block existiert schon oder kein Cert — übersprungen"
 fi
 
-# 5) Täglicher Refresh-Cron
+# 5) Täglicher Refresh-Cron (index.html, DMG + alle Unterseiten)
 cat >/etc/cron.d/humibeam-refresh <<CRON
-17 4 * * * root curl -fsSL ${RAW}/index.html -o ${LANDING_HOST}/index.html && curl -fsSL ${DMG_URL} -o ${LANDING_HOST}/Humibeam.dmg
+17 4 * * * root curl -fsSL ${RAW}/index.html -o ${LANDING_HOST}/index.html; curl -fsSL ${DMG_URL} -o ${LANDING_HOST}/Humibeam.dmg; for f in ${SUBFILES}; do mkdir -p ${LANDING_HOST}/\$(dirname \$f); curl -fsSL ${RAW}/\$f -o ${LANDING_HOST}/\$f; done
 CRON
 
 echo ""; echo "✅ DEPLOY_DONE — https://$DOMAIN"

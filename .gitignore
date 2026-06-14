@@ -5,7 +5,10 @@
 /.derivedData-humibeammac-build/
 HumibeamMac/.dd/
 HumibeamMac/.ddrel/
+HumibeamMac/.dd-support/
+HumibeamiOS/.ddwatch/
 *.app/
+*.dmg
 
 # Xcode project is generated from project.yml by XcodeGen
 HumibeamMac/HumibeamMac.xcodeproj/

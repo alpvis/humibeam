@@ -15,8 +15,10 @@
 //   GET  /blob       (Bearer)                           → {rev, payload, updatedAt, device} | 204
 //   PUT  /blob       (Bearer) {rev, payload, device}    → {rev} | 409 + aktuelles Blob
 //   GET  /health                                        → ok
+//   GET  /admin/stats (x-admin-token)                   → Betreiber-Statistik (nur Metadaten, kein Klartext)
 //
-// Konfiguration: ./config.json  { "port": 8798 }
+// Konfiguration: ./config.json  { "port": 8798, "adminToken": "<geheim, optional>" }
+// Ohne adminToken ist der Admin-Endpoint deaktiviert (503).
 'use strict';
 
 const http = require('http');
@@ -31,6 +33,16 @@ fs.mkdirSync(BLOBS, { recursive: true });
 
 const config = JSON.parse(fs.readFileSync(path.join(DIR, 'config.json'), 'utf8'));
 const PORT = config.port || 8798;
+const ADMIN_TOKEN = config.adminToken || '';   // leer = Admin-Endpoint deaktiviert
+
+// Konstant-zeitiger Vergleich des Admin-Tokens (verhindert Timing-Lecks).
+function adminAuthorized(req) {
+  if (!ADMIN_TOKEN) return false;
+  const given = String(req.headers['x-admin-token'] || '');
+  const a = Buffer.from(given);
+  const b = Buffer.from(ADMIN_TOKEN);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
 
 const ACCOUNTS_FILE = path.join(DATA, 'accounts.json');
 const TOKENS_FILE = path.join(DATA, 'tokens.json');
@@ -116,6 +128,42 @@ const server = http.createServer(async (req, res) => {
 
   try {
     if (req.method === 'GET' && route === '/health') return send(res, 200, { ok: true });
+
+    // Betreiber-Statistik — nur Metadaten (E-Mail, Anlagedatum, Sync-Meta). Niemals authHash,
+    // serverSalt, Token oder das verschlüsselte Blob selbst. Geschützt per x-admin-token.
+    if (req.method === 'GET' && route === '/admin/stats') {
+      if (!ADMIN_TOKEN) return send(res, 503, { error: 'Admin-Endpoint nicht konfiguriert' });
+      if (!adminAuthorized(req)) return send(res, 401, { error: 'kein gültiges Admin-Token' });
+      const now = Date.now();
+      let withSync = 0;
+      const list = Object.entries(accounts).map(([email, a]) => {
+        const blob = loadJSON(blobFile(a.id), null);
+        if (blob) withSync++;
+        return {
+          email,
+          id: a.id,
+          createdAt: a.createdAt || null,
+          sync: blob ? {
+            rev: blob.rev,
+            updatedAt: blob.updatedAt || null,
+            device: blob.device || null,
+            bytes: typeof blob.payload === 'string' ? blob.payload.length : 0,
+          } : null,
+        };
+      });
+      list.sort((x, y) => String(y.createdAt || '').localeCompare(String(x.createdAt || '')));
+      const activeTokens = Object.values(tokens).filter((t) => now - t.createdAt <= TOKEN_TTL_MS).length;
+      return send(res, 200, {
+        ok: true,
+        summary: {
+          accounts: list.length,
+          withSync,
+          activeTokens,
+          serverTime: new Date().toISOString(),
+        },
+        accounts: list,
+      });
+    }
 
     if (req.method === 'POST' && route === '/register') {
       if (rateLimited(ip)) return send(res, 429, { error: 'zu viele Versuche' });

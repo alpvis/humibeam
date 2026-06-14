@@ -12,6 +12,7 @@ const show = (id) => { for (const s of ['login', 'connect', 'session']) $(s).hid
 function status(msg, kind = '') { const e = $('status'); e.textContent = msg; e.className = 'status ' + kind; }
 
 let token = null, ws = null, pc = null, channel = null, sessionId = null;
+let answerReceived = false;   // Diagnose: kam eine gültige SDP-Answer vom Mac an?
 
 // ---- 1) Login bzw. Registrieren gegen das Humibeam-Konto (gleiche Konten wie die App) ----
 let mode = 'login';
@@ -114,6 +115,7 @@ async function startWebRTC() {
   status('Stelle Verbindung her…');
   overlay('Warte auf den Bildschirm des Kunden…', 'Verbindung wird aufgebaut');
   $('connState').textContent = 'verbinde…';
+  answerReceived = false;
   pc = new RTCPeerConnection({ iceServers: ICE });
   pc.addTransceiver('video', { direction: 'recvonly' });
   channel = pc.createDataChannel('input', { ordered: true });
@@ -142,14 +144,27 @@ async function startWebRTC() {
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
   ws.send(JSON.stringify({ type: 'signal', sessionId, data: { sdp: pc.localDescription } }));
+  console.log('[signal] Offer gesendet');
+  $('connState').textContent = 'Offer gesendet — warte auf Answer…';
 
-  // Diagnose: wenn nach 8 s kein Video-Track ankam, dem Supporter sagen, wo es vermutlich klemmt.
+  // Diagnose: nach 8 s ohne Video genau sagen, WO es klemmt — die häufigsten zwei Fälle
+  // sind eindeutig unterscheidbar (Answer kam an vs. nicht).
   setTimeout(() => {
-    if (!gotVideo) {
-      overlay('Kein Video empfangen',
-        'Häufigste Ursache: Bildschirmaufnahme am Mac nicht erlaubt — der Kunde muss sie in den ' +
-        'Systemeinstellungen erteilen UND die App „Humibeam Support" danach neu starten. ' +
-        '(ICE-Status unten zeigt, ob die Verbindung steht.)');
+    if (gotVideo) return;
+    if (!answerReceived) {
+      // Offer/Answer-Aushandlung hängt: der Mac hat keine SDP-Answer zurückgeschickt.
+      $('connState').textContent = 'ICE: keine Answer vom Mac';
+      overlay('Keine Antwort vom Mac',
+        'Der Mac hat keine SDP-Answer zurückgeschickt — die Offer/Answer-Aushandlung kommt nicht ' +
+        'durch. Prüfe, ob „Humibeam Support" am Mac läuft und die Verbindung zugelassen wurde. ' +
+        '(Der Server-Log zeigt, ob die Answer dort ankommt.)');
+    } else {
+      // Answer ist da, aber kein Bild → entweder ICE-Pfad (TURN) oder Capture-Erlaubnis.
+      overlay('Kein Video trotz Aushandlung',
+        'Die SDP-Answer kam an. Kein Bild heißt jetzt: entweder ICE findet keinen Pfad ' +
+        '(siehe ICE-Status unten — bei „failed" ist es TURN/Firewall) oder die ' +
+        'Bildschirmaufnahme am Mac ist nicht erlaubt (Systemeinstellungen erteilen + ' +
+        '„Humibeam Support" neu starten).');
     }
   }, 8000);
 }
@@ -162,8 +177,26 @@ function overlay(title, hint) {
 
 async function onSignal(data) {
   if (!pc) return;
-  if (data.sdp) await pc.setRemoteDescription(data.sdp);
-  else if (data.candidate) { try { await pc.addIceCandidate(data.candidate); } catch {} }
+  if (data.sdp) {
+    console.log('[signal] SDP empfangen:', data.sdp.type);
+    try {
+      await pc.setRemoteDescription(data.sdp);
+      if (data.sdp.type === 'answer') {
+        answerReceived = true;
+        $('connState').textContent = 'Answer gesetzt — ICE startet…';
+        console.log('[signal] Answer gesetzt, signalingState=', pc.signalingState);
+      }
+    } catch (err) {
+      // Wurde bisher verschluckt → „verbinde…" für immer. Jetzt sichtbar machen.
+      console.error('[signal] setRemoteDescription(Answer) fehlgeschlagen:', err);
+      $('connState').textContent = 'Answer abgelehnt: ' + err.message;
+      overlay('Aushandlung fehlgeschlagen',
+        'Die SDP-Answer des Macs hat der Browser abgelehnt: ' + err.message +
+        ' — das ist ein SDP-/Codec-Problem auf der Mac-Seite (ScreenWebRTC).');
+    }
+  } else if (data.candidate) {
+    try { await pc.addIceCandidate(data.candidate); } catch (e) { console.warn('addIceCandidate:', e); }
+  }
 }
 
 // ---- 4) Eingaben erfassen → BeamInput (gleiche Struktur wie HumibeamMac BeamInput) ----

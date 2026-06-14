@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Humibeam — Betreiber-Admin</title>
+<meta name="robots" content="noindex,nofollow">
+<style>
+  :root{--panel:#12151c;--line:#232936;--fg:#e8ecf3;--muted:#9aa6b8;--dim:#6b7688;
+        --accent:#5b8cff;--accent2:#7c5cff;--green:#34d399;--red:#ff6b6b;--radius:14px;}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{min-height:100vh;background:#0a0c10;color:var(--fg);
+       font:15px/1.55 -apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  a{color:var(--accent);text-decoration:none}
+  header{border-bottom:1px solid var(--line);background:rgba(10,12,16,.8);backdrop-filter:blur(14px)}
+  .nav{max-width:1080px;margin:0 auto;padding:0 24px;display:flex;align-items:center;gap:14px;height:58px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700}
+  .brand .dot{width:10px;height:10px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2))}
+  .brand .badge{font-size:11px;font-weight:800;letter-spacing:.05em;color:#1a1206;background:var(--green);border-radius:5px;padding:2px 7px}
+  .nav .spacer{flex:1}
+  main{max-width:1080px;margin:0 auto;padding:36px 24px}
+  .gate{max-width:420px;margin:40px auto;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:26px}
+  .gate h1{font-size:20px;margin-bottom:6px}
+  .gate p{color:var(--muted);font-size:14px;margin-bottom:18px}
+  label{display:block;font-size:13px;color:var(--muted);margin:0 0 6px 2px}
+  input{width:100%;background:#0d1017;border:1px solid var(--line);border-radius:10px;color:var(--fg);padding:11px 13px;font-size:15px;margin-bottom:14px}
+  input:focus{outline:none;border-color:var(--accent)}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:linear-gradient(135deg,var(--accent),var(--accent2));
+       color:#fff;font-weight:650;padding:11px 18px;border-radius:10px;border:0;cursor:pointer;font-size:14.5px}
+  .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--fg)}
+  .btn.full{width:100%}
+  .status{margin-top:10px;font-size:13.5px;min-height:18px}
+  .status.err{color:var(--red)}.status.ok{color:var(--green)}
+  .dash{display:none}.dash.on{display:block}
+  .head{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:22px}
+  .head h1{font-size:22px}
+  .cards{display:grid;gap:14px;grid-template-columns:repeat(4,1fr);margin-bottom:22px}
+  @media(max-width:760px){.cards{grid-template-columns:repeat(2,1fr)}}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px}
+  .stat .k{color:var(--dim);font-size:12px;margin-bottom:6px}
+  .stat .v{font-size:26px;font-weight:800;letter-spacing:-.01em}
+  .toolbar{display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+  .toolbar input{margin:0;max-width:280px}
+  .tablewrap{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:auto}
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{color:var(--dim);font-weight:650;position:sticky;top:0;background:var(--panel)}
+  tr:last-child td{border-bottom:0}
+  td.mono{font-family:ui-monospace,monospace;font-size:12px;color:var(--muted)}
+  .dot-on{color:var(--green)}.dot-off{color:var(--dim)}
+  .note{color:var(--dim);font-size:12.5px;margin-top:14px;line-height:1.6}
+</style>
+</head>
+<body>
+<header>
+  <div class="nav">
+    <a class="brand" href="/"><span class="dot"></span> humibeam <span class="badge">ADMIN</span></a>
+    <div class="spacer"></div>
+    <a href="/" style="color:var(--muted);font-size:13.5px">← Website</a>
+  </div>
+</header>
+
+<main>
+  <!-- GATE -->
+  <section id="gate" class="gate">
+    <h1>Betreiber-Admin</h1>
+    <p>Interner Bereich. Gib das Admin-Token ein, um Konto- und Sync-Statistiken zu sehen. (Token = <code>adminToken</code> aus der Sync-Server-Config.)</p>
+    <form id="gateForm">
+      <label for="adminToken">Admin-Token</label>
+      <input id="adminToken" type="password" autocomplete="off" placeholder="••••••••••••" required>
+      <button class="btn full" type="submit">Anmelden</button>
+    </form>
+    <div id="gateStatus" class="status"></div>
+  </section>
+
+  <!-- DASHBOARD -->
+  <section id="dash" class="dash">
+    <div class="head">
+      <h1>Übersicht</h1>
+      <div style="display:flex;gap:10px">
+        <button id="refresh" class="btn ghost">Aktualisieren</button>
+        <button id="lock" class="btn ghost">Sperren</button>
+      </div>
+    </div>
+    <div class="cards">
+      <div class="stat"><div class="k">Konten gesamt</div><div id="cAccounts" class="v">–</div></div>
+      <div class="stat"><div class="k">Mit Sync-Daten</div><div id="cSync" class="v">–</div></div>
+      <div class="stat"><div class="k">Aktive Tokens</div><div id="cTokens" class="v">–</div></div>
+      <div class="stat"><div class="k">Serverzeit</div><div id="cTime" class="v" style="font-size:14px;font-weight:650">–</div></div>
+    </div>
+
+    <div class="toolbar">
+      <input id="filter" type="search" placeholder="Nach E-Mail filtern…">
+      <span id="rowInfo" style="color:var(--dim);font-size:13px"></span>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr>
+          <th>E-Mail</th><th>Angelegt</th><th>Sync</th><th>Rev</th><th>Letztes Gerät</th><th>Größe</th><th>Aktualisiert</th><th>Konto-ID</th>
+        </tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <p class="note">Diese Ansicht zeigt nur Metadaten. Passwörter, Auth-Hashes, Server-Salts, Tokens und die verschlüsselten Sync-Inhalte werden vom Server bewusst nicht ausgeliefert — Zero-Knowledge bleibt gewahrt.</p>
+  </section>
+</main>
+
+<script src="./app.js"></script>
+</body>
+</html>
