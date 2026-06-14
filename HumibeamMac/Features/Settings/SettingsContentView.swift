@@ -18,12 +18,12 @@ struct SettingsContentView: View {
             }
             .pickerStyle(.segmented)
             .controlSize(.small)
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 8)
             .padding(.vertical, 10)
 
             ScrollView {
                 switch selectedTab {
-                case 0: CustomizeSettingsView(appState: appState)
+                case 0: CustomizeSettingsView(appState: appState, shell: shell)
                 case 1: AccessSettingsView(appState: appState)
                 case 3: HistorySettingsView(appState: appState)
                 case 4: UsageSettingsView(appState: appState)
@@ -659,7 +659,9 @@ struct AccessSettingsView: View {
 
 struct CustomizeSettingsView: View {
     @Bindable var appState: AppState
+    var shell: HumibeamShell? = nil
     @State private var newTerm = ""
+    @State private var showThemeEditor = false
 
     private var installedLocalModels: [LocalTranscriptionModel] {
         LocalTranscriptionService.installedModels()
@@ -676,6 +678,32 @@ struct CustomizeSettingsView: View {
             VStack(alignment: .leading, spacing: 10) {
                 SectionLabel(text: "Allgemein")
                 GeneralQuickTogglesSection(appState: appState)
+            }
+
+            // MARK: Erscheinungsbild (Terminal-Farbschema + eigene Themes)
+            if shell != nil {
+                VStack(alignment: .leading, spacing: 10) {
+                    SectionLabel(text: "Erscheinungsbild")
+                    HStack {
+                        Text("Farbschema").font(.system(size: 12)).foregroundStyle(.secondary)
+                        Picker("", selection: Binding(
+                            get: { shell?.selectedThemeID ?? "black" },
+                            set: { shell?.selectedThemeID = $0 })) {
+                            ForEach(TerminalTheme.selectable) { Text($0.name).tag($0.id) }
+                        }
+                        .labelsHidden()
+                        Spacer()
+                        Button("Eigene Themes…") { showThemeEditor = true }
+                    }
+                }
+                .sheet(isPresented: $showThemeEditor) {
+                    if let shell {
+                        ThemeEditorView(store: shell.customThemes,
+                                        selectedThemeID: Binding(
+                                            get: { shell.selectedThemeID },
+                                            set: { shell.selectedThemeID = $0 }))
+                    }
+                }
             }
 
             // MARK: iPhone-Push (Relay auf alpvis.com)

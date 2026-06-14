@@ -10,6 +10,7 @@ final class HumibeamShell {
     let hostStore = HostStore()
     let knownHosts = KnownHostsStore()
     let snippets = SnippetStore()
+    let customThemes = CustomThemeStore()
     let bookmarks = BookmarkStore()
     let commandHistory = CommandHistoryStore()
     let cloudSync = CloudSyncService()
@@ -70,6 +71,11 @@ final class HumibeamShell {
             self?.cloudSync.scheduleExport(); self?.accountSync.scheduleExport()
         }
         bookmarks.onChanged = { [weak self] in self?.accountSync.scheduleExport() }
+        // Eigene Themes geändert → falls das aktuelle Theme betroffen ist, sofort neu anwenden.
+        customThemes.onChanged = { [weak self] in
+            guard let self else { return }
+            let t = TerminalTheme.by(id: selectedThemeID); forEachController { $0.applyTheme(t) }
+        }
 
         // Humibeam-Konto: E2E-verschlüsselter Sync über alle Geräte (Macs + iOS).
         accountSync.buildPayload = { [weak self] in

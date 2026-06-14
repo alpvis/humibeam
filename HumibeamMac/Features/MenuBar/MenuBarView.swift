@@ -19,7 +19,7 @@ struct MenuBarView: View {
                 workflowPage
             }
         }
-        .frame(width: 340)
+        .frame(width: 360)
         .animation(.easeInOut(duration: 0.2), value: appState.page)
     }
 

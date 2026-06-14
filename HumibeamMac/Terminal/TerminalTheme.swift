@@ -57,5 +57,30 @@ struct TerminalTheme: Identifiable, Hashable {
 
     static let all: [TerminalTheme] = [black, beam, system, midnight, solarizedDark, dracula, light]
 
-    static func by(id: String) -> TerminalTheme { all.first { $0.id == id } ?? system }
+    /// Vom Nutzer angelegte Themes — zur Laufzeit aus dem CustomThemeStore gefüllt.
+    static var custom: [TerminalTheme] = []
+
+    /// Alle wählbaren Themes (eingebaut + eigene).
+    static var selectable: [TerminalTheme] { all + custom }
+
+    static func by(id: String) -> TerminalTheme { selectable.first { $0.id == id } ?? system }
+
+    // MARK: - Hex ⇄ NSColor (sRGB) — für eigene Themes & Import.
+
+    static func color(hex: String) -> NSColor {
+        var s = hex.trimmingCharacters(in: .whitespaces)
+        if s.hasPrefix("#") { s.removeFirst() }
+        guard s.count == 6, let v = Int(s, radix: 16) else { return .black }
+        return NSColor(srgbRed: CGFloat((v >> 16) & 0xff) / 255,
+                       green: CGFloat((v >> 8) & 0xff) / 255,
+                       blue: CGFloat(v & 0xff) / 255, alpha: 1)
+    }
+
+    static func hex(_ color: NSColor) -> String {
+        let c = color.usingColorSpace(.sRGB) ?? color
+        return String(format: "#%02X%02X%02X",
+                      Int(round(c.redComponent * 255)),
+                      Int(round(c.greenComponent * 255)),
+                      Int(round(c.blueComponent * 255)))
+    }
 }
