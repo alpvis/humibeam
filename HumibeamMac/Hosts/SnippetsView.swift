@@ -61,6 +61,15 @@ struct SnippetsView: View {
                     .font(.system(.body, design: .monospaced))
                     .frame(minHeight: 160)
                 }
+                Picker("Auslöser", selection: Binding(
+                    get: { store.snippets[i].effectiveTrigger },
+                    set: { store.snippets[i].trigger = $0 })) {
+                    ForEach(SnippetTrigger.allCases) { Text($0.label).tag($0) }
+                }
+                if store.snippets[i].effectiveTrigger == .onConnect {
+                    Text("Wird automatisch ausgeführt, sobald eine Sitzung verbunden ist (nur ohne Platzhalter).")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
                 Text("Tipp: `\\n` am Ende führt aus. Platzhalter wie {{branch}} werden vor dem Senden abgefragt.")
                     .font(.caption).foregroundStyle(.secondary)
                 if !store.snippets[i].placeholders.isEmpty {

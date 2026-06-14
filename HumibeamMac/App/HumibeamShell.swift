@@ -225,6 +225,13 @@ final class HumibeamShell {
         return out
     }
 
+    /// Führt „Beim Verbinden"-Snippets (ohne Platzhalter) automatisch in der frischen Sitzung aus.
+    private func runConnectSnippets(on controller: TerminalSessionController) {
+        for s in snippets.snippets where s.effectiveTrigger == .onConnect && s.placeholders.isEmpty {
+            controller.sendToShell(s.command.hasSuffix("\n") ? s.command : s.command + "\n")
+        }
+    }
+
     @discardableResult
     func connect(to host: SSHHost) -> TerminalTab? {
         let controller = TerminalSessionController(knownHosts: knownHosts)
@@ -264,6 +271,7 @@ final class HumibeamShell {
             tab.fileSession = nil
             Task { await self?.loadInitialBrowserPath(tab) }
             self?.pollHealth(tab)
+            self?.runConnectSnippets(on: tab.controller)
         }
         controller.onClosed = { [weak tab] in
             guard let tab else { return }

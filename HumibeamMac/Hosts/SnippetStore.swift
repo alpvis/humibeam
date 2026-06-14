@@ -1,10 +1,25 @@
 import Foundation
 import Observation
 
+enum SnippetTrigger: String, Codable, CaseIterable, Identifiable {
+    case manual
+    case onConnect
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .manual: return "Manuell"
+        case .onConnect: return "Beim Verbinden"
+        }
+    }
+}
+
 struct Snippet: Identifiable, Codable, Hashable {
     var id = UUID()
     var title: String
     var command: String
+    /// Optional (alte Snippets bleiben lesbar): automatisch ausführen, sobald eine Sitzung verbunden ist.
+    var trigger: SnippetTrigger? = nil
+    var effectiveTrigger: SnippetTrigger { trigger ?? .manual }
 
     static let placeholderRegex = try? NSRegularExpression(pattern: #"\{\{\s*([^}]+?)\s*\}\}"#)
 
