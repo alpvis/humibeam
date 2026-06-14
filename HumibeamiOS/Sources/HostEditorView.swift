@@ -10,6 +10,7 @@ struct HostEditorView: View {
     let isNew: Bool
 
     @State private var password = ""
+    @State private var envText = ""
     @State private var showsKeyImporter = false
     @State private var importError: String?
     @State private var copiedKey = false
@@ -106,6 +107,18 @@ struct HostEditorView: View {
                     ))
                 }
 
+                Section {
+                    TextField("NAME=WERT, eine pro Zeile", text: $envText, axis: .vertical)
+                        .font(.system(.body, design: .monospaced))
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .lineLimit(3...8)
+                } header: {
+                    Text("Umgebungsvariablen (optional)")
+                } footer: {
+                    Text("Wird beim Verbinden gesetzt (export) — auch nach Reconnect. Sicher im Geräte-Keychain, wird nicht synchronisiert.")
+                }
+
                 if model.hostStore.hosts.contains(where: { $0.id != host.id }) {
                     Section("Verbindung über Bastion (ProxyJump)") {
                         Picker("Bastion", selection: $host.proxyJumpHostID) {
@@ -149,6 +162,7 @@ struct HostEditorView: View {
                 if host.authKind == .password {
                     password = SSHKeyManager.loadPassword(hostID: host.id.uuidString) ?? ""
                 }
+                envText = SSHKeyManager.loadEnvVars(hostID: host.id.uuidString) ?? ""
             }
         }
     }
@@ -157,6 +171,7 @@ struct HostEditorView: View {
         if host.authKind == .password {
             SSHKeyManager.savePassword(password, hostID: host.id.uuidString)
         }
+        SSHKeyManager.saveEnvVars(envText, hostID: host.id.uuidString)
         if isNew { model.hostStore.add(host) } else { model.hostStore.update(host) }
         dismiss()
     }

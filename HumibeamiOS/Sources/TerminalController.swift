@@ -29,6 +29,8 @@ final class TerminalController: NSObject, TerminalViewDelegate, ObservableObject
     /// True while Claude Code is actively working ("esc to interrupt" visible).
     private var claudeBusy = false
     var onClaudeIdle: (() -> Void)?
+    /// Wird nach jedem erfolgreichen (Re-)Connect aufgerufen (z. B. für Auto-Snippets).
+    var onConnected: (() -> Void)?
 
     /// Aufträge, die nacheinander abgearbeitet werden: sobald Claude idle wird, geht der nächste raus.
     @Published private(set) var promptQueue: [String] = []
@@ -59,6 +61,8 @@ final class TerminalController: NSObject, TerminalViewDelegate, ObservableObject
     private var reconnectAttempts = 0
     /// Wird nach jedem (Re-)Connect als erste Eingabe geschrieben (z.B. tmux-Attach).
     var startupCommand: String?
+    /// Fertige `export …`-Zeilen, vor dem Startbefehl in die Shell geschrieben (Env-Injektion).
+    var envExports: String?
     /// $TERM für die PTY-Anforderung (Profil „Erweitert"); nil = xterm-256color.
     var termType: String?
     private let maxBackoff: Double = 30
@@ -106,12 +110,16 @@ final class TerminalController: NSObject, TerminalViewDelegate, ObservableObject
                 session.onClosed = { [weak self] in
                     Task { @MainActor in self?.handleSessionClosed() }
                 }
+                if let env = self.envExports, !env.isEmpty {
+                    session.write(env)
+                }
                 if let startup = self.startupCommand {
                     session.write(startup + "\n")
                 }
                 self.reconnectAttempts = 0
                 self.status = "verbunden"
                 self.isConnected = true
+                self.onConnected?()
                 self.startKeepalive()
             } catch {
                 self.status = "Fehler: \(error.localizedDescription)"

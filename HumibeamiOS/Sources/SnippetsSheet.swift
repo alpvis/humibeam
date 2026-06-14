@@ -154,8 +154,13 @@ private struct SnippetEditorSheet: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     Toggle("Direkt abschicken (Enter)", isOn: $runsImmediately)
+                    Picker("Auslöser", selection: Binding(
+                        get: { snippet.effectiveTrigger },
+                        set: { snippet.trigger = $0 })) {
+                        ForEach(SnippetTrigger.allCases) { Text($0.label).tag($0) }
+                    }
                 } footer: {
-                    Text("Mit {{Name}} fragst du beim Einfügen Werte ab, z. B. tail -f {{Logdatei}}")
+                    Text("Mit {{Name}} fragst du beim Einfügen Werte ab, z. B. tail -f {{Logdatei}}. „Beim Verbinden\u{201C} führt das Snippet automatisch aus, sobald eine Sitzung verbunden ist (nur ohne Platzhalter).")
                 }
             }
             .navigationTitle(snippet.title.isEmpty ? "Neues Snippet" : snippet.title)

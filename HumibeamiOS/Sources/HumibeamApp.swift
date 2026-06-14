@@ -16,6 +16,7 @@ struct HumibeamApp: App {
                     UIApplication.shared.isIdleTimerDisabled =
                         UserDefaults.standard.bool(forKey: "display.keepAwake")
                 }
+                .onOpenURL { url in model.handleDeepLink(url) }
         }
     }
 }
@@ -328,6 +329,13 @@ final class AppModel {
         }
         session.controller.termType = host.effectiveTerminalType
         session.controller.terminalView.backspaceSendsControlH = host.backspaceCtrlH ?? false
+        if let envText = SSHKeyManager.loadEnvVars(hostID: host.id.uuidString) {
+            session.controller.envExports = Self.envPreamble(from: envText)
+        }
+        session.controller.onConnected = { [weak self, weak session] in
+            guard let self, let session else { return }
+            self.runConnectSnippets(on: session)
+        }
         do {
             let creds = try hostStore.credentials(for: host)
             var proxy: SSHConnection.ProxyJump?
@@ -338,6 +346,55 @@ final class AppModel {
         } catch {
             session.controller.setStatus("Fehler: \(error.localizedDescription)")
         }
+    }
+
+    /// Wandelt „NAME=WERT"-Zeilen in sichere `export NAME='WERT'`-Zeilen (eine pro Zeile).
+    static func envPreamble(from text: String) -> String {
+        var out = ""
+        for raw in text.split(whereSeparator: \.isNewline) {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            guard !line.isEmpty, !line.hasPrefix("#"), let eq = line.firstIndex(of: "=") else { continue }
+            let name = String(line[..<eq]).trimmingCharacters(in: .whitespaces)
+            guard let first = name.first, first.isLetter || first == "_",
+                  name.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" }) else { continue }
+            let value = String(line[line.index(after: eq)...])
+            let escaped = value.replacingOccurrences(of: "'", with: "'\\''")
+            out += "export \(name)='\(escaped)'\n"
+        }
+        return out
+    }
+
+    /// Führt „Beim Verbinden"-Snippets (ohne Platzhalter) automatisch in der frischen Sitzung aus.
+    private func runConnectSnippets(on session: TerminalSession) {
+        for s in snippets.snippets where s.effectiveTrigger == .onConnect && s.placeholders.isEmpty {
+            session.controller.sendToShell(s.command.hasSuffix("\n") ? s.command : s.command + "\n")
+        }
+    }
+
+    /// Deep-Links: humibeam://open?name=<Profil> · ?id=<UUID> · oder ad-hoc ?host=…&user=…&port=…
+    func handleDeepLink(_ url: URL) {
+        guard url.scheme == "humibeam",
+              let comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
+        let q = comps.queryItems ?? []
+        func val(_ n: String) -> String? { q.first { $0.name == n }?.value }
+
+        var target: SSHHost?
+        if let idStr = val("id"), let id = UUID(uuidString: idStr) {
+            target = hostStore.hosts.first { $0.id == id }
+        } else if let name = val("name")?.lowercased() {
+            target = hostStore.hosts.first { $0.displayName.lowercased() == name || $0.name.lowercased() == name }
+        } else if let hostName = val("host") ?? val("hostname") {
+            var h = SSHHost()
+            h.host = hostName
+            h.username = val("user") ?? "root"
+            if let p = val("port"), let pi = Int(p) { h.port = pi }
+            h.authKind = .managedKey
+            target = h
+        }
+        guard let host = target else { return }
+        let session = primarySession(for: host)
+        if !session.controller.isConnected { connect(session) }
+        requestedSessionID = session.id
     }
 
     // MARK: - Port-Weiterleitungen (ssh -L)
