@@ -37,6 +37,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         return true
     }
 
+    /// Deep-Links: humibeam://open?name=<Profil> · ?id=<UUID> · oder ad-hoc ?host=…&user=…&port=…
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls where url.scheme == "humibeam" { handleDeepLink(url) }
+    }
+
+    private func handleDeepLink(_ url: URL) {
+        guard let comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
+        let q = comps.queryItems ?? []
+        func val(_ n: String) -> String? { q.first { $0.name == n }?.value }
+        NSApp.activate(ignoringOtherApps: true)
+
+        if let idStr = val("id"), let id = UUID(uuidString: idStr),
+           let host = shell.hostStore.hosts.first(where: { $0.id == id }) {
+            _ = sessions.openSSHSession(host); return
+        }
+        if let name = val("name")?.lowercased(),
+           let host = shell.hostStore.hosts.first(where: {
+               $0.displayName.lowercased() == name || $0.name.lowercased() == name }) {
+            _ = sessions.openSSHSession(host); return
+        }
+        if let hostName = val("host") ?? val("hostname") {
+            var h = SSHHost()
+            h.host = hostName
+            h.username = val("user") ?? NSUserName()
+            if let p = val("port"), let pi = Int(p) { h.port = pi }
+            h.authKind = .managedKey
+            _ = sessions.openSSHSession(h)
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 
