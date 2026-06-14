@@ -1,7 +1,7 @@
 {
   "version": "5.4",
   "build": 54,
-  "dmgURL": "https://github.com/alpvis/humibeam/releases/download/v5.4/Humibeam.dmg",
+  "dmgURL": "https://humibeam.com/Humibeam.dmg",
   "notes": "v5.4: Umgebungsvariablen pro Profil (sicher im Keychain, als export bei jedem Connect). Auto-Snippets beim Verbinden (Trigger-Snippets). Deep-Links humibeam:// fuer Quick-Connect aus Apps, Skripten & Links.",
   "minOS": "14.0"
 }
