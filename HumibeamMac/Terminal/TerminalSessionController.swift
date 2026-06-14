@@ -12,6 +12,8 @@ final class TerminalSessionController: NSObject, TerminalViewDelegate {
     private(set) var ptySession: PTYSession?
     /// Wird nach jedem (Re-)Connect als erste Eingabe in die Shell geschrieben (z.B. tmux-Attach).
     var startupCommand: String?
+    /// Fertige `export …`-Zeilen, die vor dem Startbefehl in die Shell geschrieben werden (Env-Injektion).
+    var envExports: String?
     /// $TERM für die PTY-Anforderung (Profil „Erweitert"); nil = xterm-256color.
     var termType: String?
 
@@ -142,6 +144,9 @@ final class TerminalSessionController: NSObject, TerminalViewDelegate {
                 }
                 session.onClosed = { [weak self] in
                     Task { @MainActor in self?.handleSessionClosed() }
+                }
+                if let env = self.envExports, !env.isEmpty {
+                    session.write(env)
                 }
                 if let startup = self.startupCommand {
                     session.write(startup + "\n")

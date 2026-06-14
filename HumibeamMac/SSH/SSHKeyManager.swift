@@ -49,6 +49,16 @@ enum SSHKeyManager {
         loadSecret(account: "pw-\(hostID)").flatMap { String(data: $0, encoding: .utf8) }
     }
 
+    // MARK: - Umgebungsvariablen pro Host (KEY=VALUE-Text)
+    // Bleibt lokal im Keychain (nicht im Konto-Sync) — können Secrets enthalten.
+
+    static func saveEnvVars(_ text: String, hostID: String) {
+        saveSecret(Data(text.utf8), account: "env-\(hostID)")
+    }
+    static func loadEnvVars(hostID: String) -> String? {
+        loadSecret(account: "env-\(hostID)").flatMap { String(data: $0, encoding: .utf8) }
+    }
+
     // MARK: - Gekoppelte Schlüssel (QR-Pairing „Mein Mac als Server")
     // Der Mac erzeugt das Schlüsselpaar, trägt den Public Key selbst in seine
     // authorized_keys ein und reicht den Private Key per QR an das iPhone weiter.

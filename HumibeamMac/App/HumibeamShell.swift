@@ -209,6 +209,22 @@ final class HumibeamShell {
 
     // MARK: - Connection / tabs
 
+    /// Wandelt „NAME=WERT"-Zeilen in sichere `export NAME='WERT'`-Zeilen (eine pro Zeile).
+    static func envPreamble(from text: String) -> String {
+        var out = ""
+        for raw in text.split(whereSeparator: \.isNewline) {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            guard !line.isEmpty, !line.hasPrefix("#"), let eq = line.firstIndex(of: "=") else { continue }
+            let name = String(line[..<eq]).trimmingCharacters(in: .whitespaces)
+            guard let first = name.first, first.isLetter || first == "_",
+                  name.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" }) else { continue }
+            let value = String(line[line.index(after: eq)...])
+            let escaped = value.replacingOccurrences(of: "'", with: "'\\''")
+            out += "export \(name)='\(escaped)'\n"
+        }
+        return out
+    }
+
     @discardableResult
     func connect(to host: SSHHost) -> TerminalTab? {
         let controller = TerminalSessionController(knownHosts: knownHosts)
@@ -227,6 +243,9 @@ final class HumibeamShell {
         }
         controller.termType = host.effectiveTerminalType
         controller.terminalView.backspaceSendsControlH = host.backspaceCtrlH ?? false
+        if let envText = SSHKeyManager.loadEnvVars(hostID: host.id.uuidString) {
+            controller.envExports = Self.envPreamble(from: envText)
+        }
         let tab = TerminalTab(host: host, controller: controller)
 
         controller.onStatus = { [weak tab] in

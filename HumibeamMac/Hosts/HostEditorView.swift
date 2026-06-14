@@ -6,6 +6,7 @@ struct HostEditorView: View {
     @State var host: SSHHost
     @State private var password: String = ""
     @State private var keyPassphrase: String = ""
+    @State private var envText: String = ""
     @State private var showCopiedKey = false
     var allHosts: [SSHHost] = []
     let onSave: (SSHHost) -> Void
@@ -100,6 +101,14 @@ struct HostEditorView: View {
                     ))
                 }
 
+                Section("Umgebungsvariablen (optional)") {
+                    TextEditor(text: $envText)
+                        .font(.system(.body, design: .monospaced))
+                        .frame(minHeight: 64)
+                    Text("Eine pro Zeile als NAME=WERT. Wird beim Verbinden gesetzt (export) — auch nach Reconnect. Sicher im Geräte-Keychain, wird nicht synchronisiert.")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+
                 Section("Schnellstart (optional)") {
                     HStack {
                         Text("Tastenkürzel")
@@ -146,6 +155,7 @@ struct HostEditorView: View {
             if host.authKind == .password {
                 password = SSHKeyManager.loadPassword(hostID: host.id.uuidString) ?? ""
             }
+            envText = SSHKeyManager.loadEnvVars(hostID: host.id.uuidString) ?? ""
         }
     }
 
@@ -174,6 +184,7 @@ struct HostEditorView: View {
             // Passphrase pro Host im Keychain ablegen (leer = unverschlüsselt).
             SSHKeyManager.savePassword(keyPassphrase, hostID: "keypass-\(host.id.uuidString)")
         }
+        SSHKeyManager.saveEnvVars(envText, hostID: host.id.uuidString)
         onSave(host)
         dismiss()
     }
