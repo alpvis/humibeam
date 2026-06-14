@@ -17,11 +17,23 @@ EXPORT="$DIR/.build/ios-export"
 
 xcodegen generate
 
+# App-Store-Connect-API-Key (nicht-interaktiv) für Archive UND Export verwenden, falls übergeben.
+AUTH_ARGS=()
+if [ $# -ge 2 ]; then
+  KEY_ID="$1"; ISSUER="$2"
+  for p in "$HOME/private_keys" "$HOME/.appstoreconnect/private_keys" "$HOME/.private_keys" "./private_keys"; do
+    if [ -f "$p/AuthKey_${KEY_ID}.p8" ]; then KEY_PATH="$p/AuthKey_${KEY_ID}.p8"; break; fi
+  done
+  AUTH_ARGS=(-authenticationKeyID "$KEY_ID" -authenticationKeyIssuerID "$ISSUER")
+  [ -n "${KEY_PATH:-}" ] && AUTH_ARGS+=(-authenticationKeyPath "$KEY_PATH")
+fi
+
 echo "▶︎ Archiviere (Release, Gerät)…"
 xcodebuild -scheme HumibeamiOS -configuration Release \
   -destination 'generic/platform=iOS' \
   -archivePath "$ARCHIVE" \
   -allowProvisioningUpdates \
+  "${AUTH_ARGS[@]}" \
   DEVELOPMENT_TEAM=DC289RNL2G \
   archive
 
@@ -43,17 +55,10 @@ cat > /tmp/humibeam-export-options.plist << 'EOF'
 EOF
 
 echo "▶︎ Exportiere + lade zu App Store Connect hoch…"
-if [ $# -ge 2 ]; then
-  xcodebuild -exportArchive -archivePath "$ARCHIVE" \
-    -exportOptionsPlist /tmp/humibeam-export-options.plist \
-    -exportPath "$EXPORT" \
-    -allowProvisioningUpdates \
-    -authenticationKeyID "$1" -authenticationKeyIssuerID "$2"
-else
-  xcodebuild -exportArchive -archivePath "$ARCHIVE" \
-    -exportOptionsPlist /tmp/humibeam-export-options.plist \
-    -exportPath "$EXPORT" \
-    -allowProvisioningUpdates
-fi
+xcodebuild -exportArchive -archivePath "$ARCHIVE" \
+  -exportOptionsPlist /tmp/humibeam-export-options.plist \
+  -exportPath "$EXPORT" \
+  -allowProvisioningUpdates \
+  "${AUTH_ARGS[@]}"
 
 echo "✅ Hochgeladen. In App Store Connect → TestFlight erscheint der Build nach der Verarbeitung (~10 Min)."

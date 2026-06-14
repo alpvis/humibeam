@@ -212,7 +212,14 @@ fi
 # Optional: Notarisieren + Stapeln (App auf allen Geraeten ohne Warnung)
 if [ "$NOTARIZE" = true ]; then
     echo "📤 Notarisiere (kann 1-5 Min dauern) ..."
-    if xcrun notarytool submit "$DMG_PATH" --keychain-profile "$NOTARY_PROFILE" --wait 2>&1; then
+    # Auth: Direkt-API-Key (robuster, kein Keychain-Profil nötig) ODER gespeichertes Profil.
+    #   export HUMIBEAM_NOTARY_KEY=/pfad/AuthKey_XXXX.p8 HUMIBEAM_NOTARY_KEY_ID=XXXX HUMIBEAM_NOTARY_ISSUER=<uuid>
+    if [ -n "${HUMIBEAM_NOTARY_KEY:-}" ] && [ -n "${HUMIBEAM_NOTARY_KEY_ID:-}" ] && [ -n "${HUMIBEAM_NOTARY_ISSUER:-}" ]; then
+        NOTARY_AUTH=(--key "$HUMIBEAM_NOTARY_KEY" --key-id "$HUMIBEAM_NOTARY_KEY_ID" --issuer "$HUMIBEAM_NOTARY_ISSUER")
+    else
+        NOTARY_AUTH=(--keychain-profile "$NOTARY_PROFILE")
+    fi
+    if xcrun notarytool submit "$DMG_PATH" "${NOTARY_AUTH[@]}" --wait 2>&1; then
         echo "📎 Stemple ..."
         xcrun stapler staple "$DMG_PATH" 2>&1 || true
         xcrun stapler staple "$DEST" 2>&1 || true
