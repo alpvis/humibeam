@@ -1,7 +1,7 @@
 {
-  "version": "5.4",
-  "build": 54,
+  "version": "5.5",
+  "build": 55,
   "dmgURL": "https://humibeam.com/Humibeam.dmg",
-  "notes": "v5.4: Umgebungsvariablen pro Profil (sicher im Keychain, als export bei jedem Connect). Auto-Snippets beim Verbinden (Trigger-Snippets). Deep-Links humibeam:// fuer Quick-Connect aus Apps, Skripten & Links.",
+  "notes": "v5.5: Theme-Editor — eigene Terminal-Farbschemata anlegen, bearbeiten und iTerm2-Schemes (.itermcolors) importieren; Farbschema-Auswahl jetzt in Einstellungen → Anpassen. Behebt den abgeschnittenen „Konto“-Tab in den Einstellungen. (v5.4: Env-Variablen pro Profil, Auto-Snippets beim Verbinden, Deep-Links humibeam://.)",
   "minOS": "14.0"
 }
