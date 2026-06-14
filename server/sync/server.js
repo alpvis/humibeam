@@ -11,7 +11,12 @@
 //   POST /register   {email, kdfSalt, authKey}          → {token}
 //   GET  /salt?email=…                                  → {kdfSalt}
 //   POST /login      {email, authKey}                   → {token}
+//   POST /change-password {email, oldAuthKey, newKdfSalt, newAuthKey, payload?} → {token}
+//   GET  /sessions   (Bearer)                           → {sessions:[{id,createdAt,current}]}
+//   POST /logout-all (Bearer)                           → {revoked}
+//   POST /delete     (Bearer)                           → {ok}
 //   POST /logout     (Bearer)                           → {}
+//   DELETE /admin/account?email=… (x-admin-token)       → {ok}
 //   GET  /blob       (Bearer)                           → {rev, payload, updatedAt, device} | 204
 //   PUT  /blob       (Bearer) {rev, payload, device}    → {rev} | 409 + aktuelles Blob
 //   GET  /health                                        → ok
@@ -83,6 +88,31 @@ function accountForToken(req) {
   const info = tokens[token];
   if (!info || Date.now() - info.createdAt > TOKEN_TTL_MS) return null;
   return { token, accountId: info.accountId };
+}
+
+function emailForAccountId(id) {
+  return Object.keys(accounts).find((e) => accounts[e].id === id);
+}
+
+// Alle Tokens eines Kontos widerrufen (optional eines behalten, z. B. das aktuelle).
+function revokeTokens(accountId, keepToken) {
+  let n = 0;
+  for (const [t, info] of Object.entries(tokens)) {
+    if (info.accountId === accountId && t !== keepToken) { delete tokens[t]; n++; }
+  }
+  if (n) saveJSON(TOKENS_FILE, tokens);
+  return n;
+}
+
+// Konto + Blob + alle Tokens restlos entfernen.
+function deleteAccount(email) {
+  const acct = accounts[email];
+  if (!acct) return false;
+  revokeTokens(acct.id, null);
+  try { fs.unlinkSync(blobFile(acct.id)); } catch { /* kein Blob */ }
+  delete accounts[email];
+  saveJSON(ACCOUNTS_FILE, accounts);
+  return true;
 }
 
 // Naives Rate-Limit für Auth-Endpunkte: 20 Versuche / 10 Minuten pro IP.
@@ -165,6 +195,16 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
+    // Admin: Konto löschen (Aufräumen/Sperren). ?email=…
+    if (req.method === 'DELETE' && route === '/admin/account') {
+      if (!ADMIN_TOKEN) return send(res, 503, { error: 'Admin-Endpoint nicht konfiguriert' });
+      if (!adminAuthorized(req)) return send(res, 401, { error: 'kein gültiges Admin-Token' });
+      const email = normalizeEmail(url.searchParams.get('email'));
+      const ok = deleteAccount(email);
+      if (ok) console.log(`- Konto gelöscht (admin): ${email}`);
+      return send(res, ok ? 200 : 404, ok ? { ok: true } : { error: 'unbekanntes Konto' });
+    }
+
     if (req.method === 'POST' && route === '/register') {
       if (rateLimited(ip)) return send(res, 429, { error: 'zu viele Versuche' });
       const { email: rawEmail, kdfSalt, authKey } = await readBody(req);
@@ -205,6 +245,65 @@ const server = http.createServer(async (req, res) => {
       if (!crypto.timingSafeEqual(expected, actual)) return send(res, 401, { error: 'Anmeldung fehlgeschlagen' });
       console.log(`→ Anmeldung: ${email}`);
       return send(res, 200, { token: newToken(acct.id) });
+    }
+
+    // Passwort ändern: Client weist altes Passwort nach (oldAuthKey), liefert neuen Salt+AuthKey
+    // und das mit dem NEUEN encKey neu verschlüsselte Blob. Server bleibt Zero-Knowledge.
+    if (req.method === 'POST' && route === '/change-password') {
+      if (rateLimited(ip)) return send(res, 429, { error: 'zu viele Versuche' });
+      const { email: rawEmail, oldAuthKey, newKdfSalt, newAuthKey, payload, device } = await readBody(req);
+      const email = normalizeEmail(rawEmail);
+      const acct = accounts[email];
+      if (!acct || !/^[0-9a-f]{64}$/.test(oldAuthKey || '')) return send(res, 401, { error: 'Anmeldung fehlgeschlagen' });
+      const expected = Buffer.from(acct.authHash, 'hex');
+      const actual = Buffer.from(hashAuthKey(oldAuthKey, acct.serverSalt), 'hex');
+      if (!crypto.timingSafeEqual(expected, actual)) return send(res, 401, { error: 'altes Passwort falsch' });
+      if (!/^[0-9a-f]{32}$/.test(newKdfSalt || '') || !/^[0-9a-f]{64}$/.test(newAuthKey || ''))
+        return send(res, 400, { error: 'ungültige Parameter' });
+      const serverSalt = crypto.randomBytes(16).toString('hex');
+      acct.kdfSalt = newKdfSalt;
+      acct.serverSalt = serverSalt;
+      acct.authHash = hashAuthKey(newAuthKey, serverSalt);
+      saveJSON(ACCOUNTS_FILE, accounts);
+      if (typeof payload === 'string' && payload.length && payload.length <= 3 * 1024 * 1024) {
+        const file = blobFile(acct.id);
+        const current = loadJSON(file, { rev: 0 });
+        saveJSON(file, {
+          rev: current.rev + 1, payload,
+          device: String(device || '').slice(0, 100), updatedAt: new Date().toISOString(),
+        });
+      }
+      revokeTokens(acct.id, null);   // Sicherheit: alle alten Sitzungen beenden
+      console.log(`~ Passwort geändert: ${email}`);
+      return send(res, 200, { token: newToken(acct.id) });
+    }
+
+    // Aktive Sitzungen dieses Kontos auflisten (ohne Token-Werte preiszugeben).
+    if (req.method === 'GET' && route === '/sessions') {
+      const auth = accountForToken(req);
+      if (!auth) return send(res, 401, { error: 'nicht angemeldet' });
+      const list = Object.entries(tokens)
+        .filter(([, info]) => info.accountId === auth.accountId)
+        .map(([t, info]) => ({ id: t.slice(0, 8), createdAt: new Date(info.createdAt).toISOString(), current: t === auth.token }))
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      return send(res, 200, { sessions: list });
+    }
+
+    // Überall abmelden: alle anderen Sitzungen widerrufen, aktuelle behalten.
+    if (req.method === 'POST' && route === '/logout-all') {
+      const auth = accountForToken(req);
+      if (!auth) return send(res, 401, { error: 'nicht angemeldet' });
+      const n = revokeTokens(auth.accountId, auth.token);
+      return send(res, 200, { revoked: n });
+    }
+
+    // Eigenes Konto löschen (inkl. Blob + aller Sitzungen).
+    if (req.method === 'POST' && route === '/delete') {
+      const auth = accountForToken(req);
+      if (!auth) return send(res, 401, { error: 'nicht angemeldet' });
+      const email = emailForAccountId(auth.accountId);
+      if (email) { deleteAccount(email); console.log(`- Konto gelöscht (self): ${email}`); }
+      return send(res, 200, { ok: true });
     }
 
     // Token-Prüfung für andere Humibeam-Dienste (z. B. Support-Signaling: "Supporter muss eingeloggt sein").

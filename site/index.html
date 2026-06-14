@@ -11,22 +11,30 @@
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://humibeam.com">
 <link rel="canonical" href="https://humibeam.com/">
+<meta name="theme-color" content="#0a0c10">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
 <style>
   :root{
+    --bg:#0a0c10;
     --panel:#12151c; --panel2:#0f131a; --line:#232936; --fg:#e8ecf3; --muted:#9aa6b8; --dim:#6b7688;
     --accent:#5b8cff; --accent2:#7c5cff; --green:#34d399; --orange:#fbbf24; --red:#ff6b6b;
     --radius:16px; --maxw:1080px;
   }
+  html.light{
+    --bg:#f3f5fa;
+    --panel:#ffffff; --panel2:#f0f3f9; --line:#dce1ec; --fg:#11151c; --muted:#56607a; --dim:#8a93a8;
+  }
   *{box-sizing:border-box;margin:0;padding:0}
   html{scroll-behavior:smooth}
   body{background:radial-gradient(1200px 700px at 70% -10%,rgba(91,140,255,.12),transparent 60%),
-        radial-gradient(900px 600px at 10% 10%,rgba(124,92,255,.10),transparent 55%),#0a0c10;
+        radial-gradient(900px 600px at 10% 10%,rgba(124,92,255,.10),transparent 55%),var(--bg);
         color:var(--fg);font:16px/1.6 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Inter,system-ui,sans-serif;
         -webkit-font-smoothing:antialiased}
   .wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px}
   a{color:var(--accent);text-decoration:none}
   header{position:sticky;top:0;z-index:20;backdrop-filter:blur(14px);
-         background:rgba(10,12,16,.72);border-bottom:1px solid var(--line)}
+         background:color-mix(in srgb,var(--bg) 72%,transparent);border-bottom:1px solid var(--line)}
   .nav{display:flex;align-items:center;gap:16px;height:62px}
   .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:18px;letter-spacing:-.01em}
   .brand .dot{width:11px;height:11px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));box-shadow:0 0 14px rgba(91,140,255,.7)}
@@ -36,6 +44,8 @@
   .lang-toggle{display:flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}
   .lang-toggle button{background:transparent;color:var(--muted);border:0;padding:6px 12px;font-size:13px;font-weight:600;cursor:pointer}
   .lang-toggle button.active{background:var(--accent);color:#fff}
+  .themebtn{background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:9px;padding:7px 11px;font-size:14px;cursor:pointer}
+  .themebtn:hover{color:var(--fg)}
   .btn{display:inline-flex;align-items:center;gap:9px;background:linear-gradient(135deg,var(--accent),var(--accent2));
        color:#fff;font-weight:650;padding:12px 20px;border-radius:12px;border:0;cursor:pointer;font-size:15px;
        box-shadow:0 8px 30px rgba(91,140,255,.35);transition:transform .15s ease,box-shadow .15s ease}
@@ -123,6 +133,7 @@
     <a class="navlink" href="#features" data-de="Funktionen" data-en="Features">Funktionen</a>
     <a class="navlink" href="#faq" data-de="FAQ" data-en="FAQ">FAQ</a>
     <div class="spacer"></div>
+    <button class="themebtn" id="themeBtn" title="Hell/Dunkel">◐</button>
     <div class="lang-toggle">
       <button id="b-de" class="active" onclick="setLang('de')">DE</button>
       <button id="b-en" onclick="setLang('en')">EN</button>
@@ -417,6 +428,7 @@
       <div class="footlinks" style="margin-top:14px">
         <a href="/account/" data-de="Konto" data-en="Account">Konto</a>
         <a href="/support/" data-de="Remote-Support" data-en="Remote support">Remote-Support</a>
+        <a href="/status/" data-de="Systemstatus" data-en="System status">Systemstatus</a>
         <a href="https://github.com/alpvis/humibeam">GitHub</a>
       </div>
     </div>
@@ -449,6 +461,20 @@
     var l = saved || (((navigator.language||'').slice(0,2)==='de')?'de':'en');
     setLang(l);
   })();
+  // Theme-Toggle (Hell/Dunkel), geteilt über alle Seiten
+  (function(){
+    var t; try{t=localStorage.getItem('humibeam_theme');}catch(e){}
+    if(t==='light') document.documentElement.classList.add('light');
+    var meta=document.querySelector('meta[name="theme-color"]');
+    function sync(){ if(meta) meta.setAttribute('content', document.documentElement.classList.contains('light')?'#f3f5fa':'#0a0c10'); }
+    sync();
+    document.getElementById('themeBtn').addEventListener('click',function(){
+      var light=document.documentElement.classList.toggle('light');
+      try{localStorage.setItem('humibeam_theme',light?'light':'dark');}catch(e){}
+      sync();
+    });
+  })();
+  if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(function(){});}
 </script>
 </body>
 </html>

@@ -30,7 +30,9 @@ curl -fsSL "$DMG_URL"        -o "$LANDING_HOST/Humibeam.dmg" || die "dmg downloa
 # Unterordner-Dateien (Konto-Bereich, Betreiber-Admin, Remote-Support-Browser-Client)
 SUBFILES="account/index.html account/app.js account/crypto.js \
           admin/index.html admin/app.js \
-          support/index.html support/app.js support/crypto.js"
+          support/index.html support/app.js support/crypto.js \
+          status/index.html \
+          manifest.webmanifest sw.js icon.svg"
 for f in $SUBFILES; do
   mkdir -p "$LANDING_HOST/$(dirname "$f")"
   curl -fsSL "$RAW/$f" -o "$LANDING_HOST/$f" || die "$f download"

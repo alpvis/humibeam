@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>humibeam — Systemstatus</title>
+<meta name="description" content="Live-Status der humibeam-Dienste: Konto-Sync, Remote-Support-Signaling und Push-Benachrichtigungen.">
+<meta name="theme-color" content="#0a0c10">
+<link rel="manifest" href="/manifest.webmanifest">
+<style>
+  :root{--bg:#0a0c10;--panel:#12151c;--line:#232936;--fg:#e8ecf3;--muted:#9aa6b8;--dim:#6b7688;
+        --accent:#5b8cff;--accent2:#7c5cff;--green:#34d399;--red:#ff6b6b;--orange:#fbbf24;--radius:16px;}
+  html.light{--bg:#f3f5fa;--panel:#fff;--line:#dce1ec;--fg:#11151c;--muted:#56607a;--dim:#8a93a8;}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{min-height:100vh;background:radial-gradient(1000px 600px at 70% -10%,rgba(91,140,255,.12),transparent 60%),var(--bg);
+       color:var(--fg);font:16px/1.6 -apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column}
+  a{color:var(--accent);text-decoration:none}
+  header{border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--bg) 80%,transparent);backdrop-filter:blur(14px)}
+  .nav{max-width:760px;margin:0 auto;padding:0 24px;display:flex;align-items:center;gap:14px;height:60px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:18px;color:var(--fg)}
+  .brand .dot{width:11px;height:11px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2))}
+  .nav .spacer{flex:1}
+  .themebtn{color:var(--muted);font-size:14px;background:transparent;border:1px solid var(--line);border-radius:9px;padding:6px 11px;cursor:pointer}
+  .nav a.back{color:var(--muted);font-size:14px}
+  main{flex:1;max-width:760px;width:100%;margin:0 auto;padding:44px 24px}
+  h1{font-size:28px;letter-spacing:-.02em;margin-bottom:6px}
+  .overall{display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px;margin:18px 0 22px}
+  .big{width:14px;height:14px;border-radius:50%;background:var(--dim);flex:none}
+  .big.up{background:var(--green);box-shadow:0 0 14px rgba(52,211,153,.6)}
+  .big.down{background:var(--red);box-shadow:0 0 14px rgba(255,107,107,.6)}
+  .overall .t{font-size:18px;font-weight:700}
+  .overall .s{color:var(--muted);font-size:13.5px}
+  .svc{display:flex;align-items:center;gap:14px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-bottom:12px}
+  .svc .d{width:11px;height:11px;border-radius:50%;background:var(--dim);flex:none}
+  .svc .d.up{background:var(--green)}.svc .d.down{background:var(--red)}
+  .svc .body{flex:1}
+  .svc .name{font-weight:650}
+  .svc .meta{color:var(--muted);font-size:13px;margin-top:2px}
+  .svc .state{font-size:13px;font-weight:650}
+  .svc .state.up{color:var(--green)}.svc .state.down{color:var(--red)}
+  .foot{color:var(--dim);font-size:12.5px;margin-top:20px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .btn{background:transparent;border:1px solid var(--line);color:var(--fg);border-radius:9px;padding:7px 13px;font-size:13px;cursor:pointer}
+  footer{border-top:1px solid var(--line);padding:24px;color:var(--dim);font-size:13px;text-align:center}
+</style>
+</head>
+<body>
+<header>
+  <div class="nav">
+    <a class="brand" href="/"><span class="dot"></span> humibeam</a>
+    <div class="spacer"></div>
+    <button class="themebtn" id="themeBtn" title="Hell/Dunkel">◐</button>
+    <a class="back" href="/">← Startseite</a>
+  </div>
+</header>
+
+<main>
+  <h1>Systemstatus</h1>
+  <p style="color:var(--muted)">Live-Status der humibeam-Backend-Dienste.</p>
+
+  <div class="overall">
+    <span id="bigDot" class="big"></span>
+    <div>
+      <div id="overallTitle" class="t">Prüfe Dienste…</div>
+      <div id="overallSub" class="s">Einen Moment…</div>
+    </div>
+  </div>
+
+  <div id="services"></div>
+
+  <div class="foot">
+    <span id="checked">—</span>
+    <button class="btn" id="recheck">Erneut prüfen</button>
+  </div>
+</main>
+
+<footer>© <span id="yr"></span> Humiqa GmbH · humibeam — <a href="/">humibeam.com</a></footer>
+
+<script>
+(function(){
+  var t; try{t=localStorage.getItem('humibeam_theme');}catch(e){}
+  if(t==='light') document.documentElement.classList.add('light');
+  document.getElementById('themeBtn').addEventListener('click',function(){
+    var light=document.documentElement.classList.toggle('light');
+    try{localStorage.setItem('humibeam_theme',light?'light':'dark');}catch(e){}
+  });
+  document.getElementById('yr').textContent=new Date().getFullYear();
+  if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(function(){});}
+})();
+
+var SERVICES = [
+  { name:'Konto-Sync', url:'/humibeam-sync/health', desc:'Registrierung, Login, Ende-zu-Ende-Sync' },
+  { name:'Remote-Support', url:'/humibeam-support/health', desc:'WebRTC-Signaling für Bildschirmfreigabe',
+    meta:function(d){ return d.devices!=null ? d.devices+' Gerät(e) online · '+d.sessions+' Sitzung(en)' : ''; } },
+  { name:'Push-Benachrichtigungen', url:'/humibeam-push/health', desc:'APNs für iPhone-Companion',
+    meta:function(d){ return (d.apnsConfigured?'APNs konfiguriert':'APNs nicht konfiguriert')+' · '+d.devices+' Gerät(e)'; } }
+];
+
+async function check(svc){
+  var started=performance.now();
+  try{
+    var ctl=new AbortController(); var to=setTimeout(function(){ctl.abort();},8000);
+    var res=await fetch(svc.url,{signal:ctl.signal,cache:'no-store'});
+    clearTimeout(to);
+    var ms=Math.round(performance.now()-started);
+    if(!res.ok) return {up:false,ms:ms,note:'HTTP '+res.status};
+    var d={}; try{ d=await res.json(); }catch(e){}
+    var up=d.ok!==false;
+    return {up:up,ms:ms,data:d,note:up?(ms+' ms'):'antwortet, aber nicht ok'};
+  }catch(e){
+    return {up:false,ms:null,note:'nicht erreichbar'};
+  }
+}
+
+function render(results){
+  var box=document.getElementById('services'); box.innerHTML='';
+  var allUp=true, anyUp=false;
+  results.forEach(function(r){
+    if(r.res.up) anyUp=true; else allUp=false;
+    var metaTxt=r.svc.desc;
+    if(r.res.up && r.svc.meta && r.res.data){ var m=r.svc.meta(r.res.data); if(m) metaTxt=r.svc.desc+' · '+m; }
+    var el=document.createElement('div'); el.className='svc';
+    el.innerHTML='<span class="d '+(r.res.up?'up':'down')+'"></span>'+
+      '<div class="body"><div class="name">'+r.svc.name+'</div><div class="meta">'+esc(metaTxt)+'</div></div>'+
+      '<div class="state '+(r.res.up?'up':'down')+'">'+(r.res.up?'Betriebsbereit':'Störung')+'<br><span style="color:var(--dim);font-weight:400;font-size:12px">'+esc(r.res.note)+'</span></div>';
+    box.appendChild(el);
+  });
+  var dot=document.getElementById('bigDot');
+  dot.className='big '+(allUp?'up':(anyUp?'down':'down'));
+  document.getElementById('overallTitle').textContent=allUp?'Alle Systeme betriebsbereit':(anyUp?'Teilweise gestört':'Großstörung');
+  document.getElementById('overallSub').textContent=allUp?'Alle Dienste antworten normal.':'Mindestens ein Dienst antwortet nicht.';
+  document.getElementById('checked').textContent='Zuletzt geprüft: '+new Date().toLocaleTimeString('de-DE');
+}
+
+async function runAll(){
+  document.getElementById('overallTitle').textContent='Prüfe Dienste…';
+  var results=await Promise.all(SERVICES.map(async function(svc){ return {svc:svc,res:await check(svc)}; }));
+  render(results);
+}
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]);});}
+document.getElementById('recheck').addEventListener('click',runAll);
+runAll();
+setInterval(runAll,30000);
+</script>
+</body>
+</html>

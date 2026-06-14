@@ -4,26 +4,33 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Humibeam-Konto — Anmelden & Geräte-Sync verwalten</title>
-<meta name="description" content="Melde dich bei deinem kostenlosen Humibeam-Konto an: Ende-zu-Ende-verschlüsselter Geräte-Sync, Konto- und Geräteverwaltung.">
+<meta name="description" content="Melde dich bei deinem kostenlosen Humibeam-Konto an: Ende-zu-Ende-verschlüsselter Geräte-Sync, Passwort ändern, Sitzungen verwalten, Backup, Konto löschen.">
 <meta name="robots" content="noindex">
+<meta name="theme-color" content="#0a0c10">
+<link rel="manifest" href="/manifest.webmanifest">
 <style>
   :root{
-    --panel:#12151c; --line:#232936; --fg:#e8ecf3; --muted:#9aa6b8; --dim:#6b7688;
-    --accent:#5b8cff; --accent2:#7c5cff; --green:#34d399; --red:#ff6b6b; --radius:16px;
+    --bg:#0a0c10; --panel:#12151c; --line:#232936; --fg:#e8ecf3; --muted:#9aa6b8; --dim:#6b7688;
+    --accent:#5b8cff; --accent2:#7c5cff; --green:#34d399; --red:#ff6b6b; --orange:#fbbf24; --radius:16px;
+    --inp:#0d1017;
+  }
+  html.light{
+    --bg:#f3f5fa; --panel:#ffffff; --line:#dce1ec; --fg:#11151c; --muted:#56607a; --dim:#8a93a8;
+    --inp:#f7f9fc;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{min-height:100vh;background:radial-gradient(1100px 650px at 70% -10%,rgba(91,140,255,.12),transparent 60%),
-        radial-gradient(800px 550px at 10% 5%,rgba(124,92,255,.10),transparent 55%),#0a0c10;
+        radial-gradient(800px 550px at 10% 5%,rgba(124,92,255,.10),transparent 55%),var(--bg);
         color:var(--fg);font:16px/1.6 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Inter,system-ui,sans-serif;
         -webkit-font-smoothing:antialiased;display:flex;flex-direction:column}
   a{color:var(--accent);text-decoration:none}
-  header{border-bottom:1px solid var(--line);background:rgba(10,12,16,.72);backdrop-filter:blur(14px)}
+  header{border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--bg) 72%,transparent);backdrop-filter:blur(14px)}
   .nav{max-width:920px;margin:0 auto;padding:0 24px;display:flex;align-items:center;gap:14px;height:60px}
-  .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:18px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:18px;color:var(--fg)}
   .brand .dot{width:11px;height:11px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));box-shadow:0 0 14px rgba(91,140,255,.7)}
   .nav .spacer{flex:1}
-  .nav a.back{color:var(--muted);font-size:14px}
-  main{flex:1;max-width:920px;width:100%;margin:0 auto;padding:48px 24px}
+  .nav a.back,.themebtn{color:var(--muted);font-size:14px;background:transparent;border:1px solid var(--line);border-radius:9px;padding:6px 11px;cursor:pointer}
+  main{flex:1;max-width:920px;width:100%;margin:0 auto;padding:40px 24px}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:28px}
   .auth{max-width:420px;margin:24px auto 0}
   h1{font-size:26px;letter-spacing:-.02em;margin-bottom:6px;text-align:center}
@@ -32,7 +39,7 @@
   .tabs button{flex:1;background:transparent;color:var(--muted);border:0;padding:11px;font-size:14.5px;font-weight:650;cursor:pointer}
   .tabs button.active{background:var(--accent);color:#fff}
   label{display:block;font-size:13px;color:var(--muted);margin:0 0 6px 2px}
-  input{width:100%;background:#0d1017;border:1px solid var(--line);border-radius:10px;color:var(--fg);
+  input{width:100%;background:var(--inp);border:1px solid var(--line);border-radius:10px;color:var(--fg);
         padding:12px 14px;font-size:15px;margin-bottom:16px;font-family:inherit}
   input:focus{outline:none;border-color:var(--accent)}
   .hint{color:var(--dim);font-size:12.5px;margin:-10px 0 16px 2px}
@@ -40,10 +47,16 @@
        background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-weight:650;
        padding:13px 20px;border-radius:11px;border:0;cursor:pointer;font-size:15px}
   .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--fg)}
+  .btn.danger{background:transparent;border:1px solid var(--red);color:var(--red)}
+  .btn.auto{width:auto;padding:10px 16px}
   .btn:disabled{opacity:.6;cursor:default}
   .status{margin-top:16px;font-size:14px;min-height:20px;text-align:center}
   .status.err{color:var(--red)}.status.ok{color:var(--green)}
   .row{display:flex;gap:10px}
+  /* Passwort-Stärke */
+  .meter{height:6px;border-radius:999px;background:var(--line);overflow:hidden;margin:-8px 0 8px}
+  .meter i{display:block;height:100%;width:0;transition:width .2s,background .2s}
+  .meterlbl{font-size:12px;color:var(--dim);margin:0 0 14px 2px}
   /* Dashboard */
   .dash{display:none;max-width:760px;margin:0 auto}
   .dash.on{display:block}
@@ -56,6 +69,7 @@
   .stat .v{font-size:24px;font-weight:800;letter-spacing:-.01em}
   .stat .v.sm{font-size:15px;font-weight:650}
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;margin-top:16px}
+  .panel.danger{border-color:color-mix(in srgb,var(--red) 45%,var(--line))}
   .panel h3{font-size:16px;margin-bottom:12px}
   .panel p{color:var(--muted);font-size:14px}
   .kv{display:flex;justify-content:space-between;gap:14px;padding:9px 0;border-top:1px solid var(--line);font-size:14px}
@@ -63,7 +77,11 @@
   .kv .k{color:var(--muted)}
   .pillrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
   .chip{border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:13px;color:var(--muted)}
+  .sess{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--line);font-size:13.5px}
+  .sess:first-of-type{border-top:0}
+  .sess .badge{font-size:11px;font-weight:700;color:var(--green);border:1px solid color-mix(in srgb,var(--green) 40%,var(--line));border-radius:999px;padding:2px 8px}
   .note{color:var(--dim);font-size:12.5px;margin-top:14px;line-height:1.6}
+  details summary{cursor:pointer;font-size:14px;color:var(--accent);margin-bottom:10px}
   footer{border-top:1px solid var(--line);padding:26px 24px;color:var(--dim);font-size:13px;text-align:center}
 </style>
 </head>
@@ -72,7 +90,8 @@
   <div class="nav">
     <a class="brand" href="/"><span class="dot"></span> humibeam</a>
     <div class="spacer"></div>
-    <a class="back" href="/">← Zur Startseite</a>
+    <button class="themebtn" id="themeBtn" title="Hell/Dunkel">◐</button>
+    <a class="back" href="/">← Startseite</a>
   </div>
 </header>
 
@@ -91,6 +110,10 @@
         <input id="email" type="email" inputmode="email" autocomplete="email" required placeholder="du@example.com">
         <label for="password">Passwort</label>
         <input id="password" type="password" autocomplete="current-password" required placeholder="••••••••">
+        <div id="meterWrap" hidden>
+          <div class="meter"><i id="meterBar"></i></div>
+          <div id="meterLbl" class="meterlbl"></div>
+        </div>
         <div id="pwHint" class="hint" hidden>Mindestens 8 Zeichen. Das Passwort verlässt nie dein Gerät — daraus wird lokal dein Schlüssel abgeleitet. Vergisst du es, sind die verschlüsselten Sync-Daten nicht wiederherstellbar.</div>
         <button id="submit" class="btn" type="submit">Anmelden</button>
       </form>
@@ -107,8 +130,8 @@
         <div class="who">Angemeldet als <b id="whoEmail">…</b></div>
       </div>
       <div class="row" style="width:auto">
-        <a class="btn ghost" href="/support/" style="width:auto;padding:10px 16px">Remote-Support</a>
-        <button id="logout" class="btn ghost" style="width:auto;padding:10px 16px">Abmelden</button>
+        <a class="btn ghost auto" href="/support/">Remote-Support</a>
+        <button id="logout" class="btn ghost auto">Abmelden</button>
       </div>
     </div>
 
@@ -123,21 +146,83 @@
       <p id="syncSummary">Lade Sync-Daten…</p>
       <div id="syncChips" class="pillrow"></div>
       <div class="kv"><span class="k">Letztes Gerät</span><span id="kvDevice">–</span></div>
-      <p class="note">Inhalte werden auf deinem Gerät entschlüsselt — diese Seite zeigt nur Anzahlen, keine Klartext-Inhalte deiner Profile. Passwörter & SSH-Keys werden nicht synchronisiert (bleiben im Keychain).</p>
+      <p class="note">Inhalte werden auf deinem Gerät entschlüsselt — diese Seite zeigt nur Anzahlen, keine Klartext-Inhalte. Passwörter & SSH-Keys werden nicht synchronisiert (bleiben im Keychain).</p>
     </div>
 
+    <!-- Backup -->
     <div class="panel">
-      <h3>Konto verwalten</h3>
+      <h3>Backup</h3>
+      <p>Lade ein <b>entschlüsseltes</b> Backup deiner Sync-Daten als JSON herunter — z. B. zur Sicherung deiner SSH-Profile und Snippets.</p>
+      <div class="row" style="margin-top:14px;width:auto">
+        <button id="exportBtn" class="btn ghost auto">↓ Backup herunterladen (.json)</button>
+      </div>
+      <p class="note">Die Datei ist unverschlüsselt — bewahre sie sicher auf. Nur in dieser Sitzung verfügbar (Schlüssel liegt nur im Speicher).</p>
+    </div>
+
+    <!-- Sicherheit: Passwort ändern -->
+    <div class="panel">
+      <h3>Passwort ändern</h3>
+      <details>
+        <summary>Formular anzeigen</summary>
+        <form id="pwForm">
+          <label for="oldPw">Aktuelles Passwort</label>
+          <input id="oldPw" type="password" autocomplete="current-password" placeholder="••••••••">
+          <label for="newPw">Neues Passwort</label>
+          <input id="newPw" type="password" autocomplete="new-password" placeholder="mind. 8 Zeichen">
+          <div class="meter"><i id="newMeterBar"></i></div>
+          <div id="newMeterLbl" class="meterlbl"></div>
+          <label for="newPw2">Neues Passwort wiederholen</label>
+          <input id="newPw2" type="password" autocomplete="new-password" placeholder="••••••••">
+          <button id="pwSubmit" class="btn" type="submit">Passwort ändern</button>
+        </form>
+        <div id="pwStatus" class="status"></div>
+        <p class="note">Beim Ändern werden deine Sync-Daten lokal neu verschlüsselt und alle anderen Sitzungen abgemeldet.</p>
+      </details>
+    </div>
+
+    <!-- Aktive Sitzungen -->
+    <div class="panel">
+      <h3>Aktive Sitzungen</h3>
+      <div id="sessions"><p class="note">Lade Sitzungen…</p></div>
+      <div class="row" style="margin-top:14px;width:auto">
+        <button id="logoutAll" class="btn ghost auto">Andere Sitzungen abmelden</button>
+      </div>
+    </div>
+
+    <!-- Konto -->
+    <div class="panel">
+      <h3>Konto</h3>
       <div class="kv"><span class="k">E-Mail</span><span id="kvEmail">–</span></div>
       <div class="kv"><span class="k">Konto-ID</span><span id="kvId" style="font-family:ui-monospace,monospace;font-size:12.5px">–</span></div>
-      <p class="note">Geräte koppeln, Theme und Profile ändern usw. geschieht in der Mac-App bzw. im iPhone-Companion — die Änderungen erscheinen hier per Sync. Konto löschen oder Passwort ändern: bitte an <a href="mailto:support@humibeam.com">support@humibeam.com</a>.</p>
+    </div>
+
+    <!-- Gefahrenzone -->
+    <div class="panel danger">
+      <h3 style="color:var(--red)">Konto löschen</h3>
+      <p>Löscht dein Konto, alle synchronisierten Daten und alle Sitzungen unwiderruflich.</p>
+      <div class="row" style="margin-top:14px;width:auto">
+        <button id="deleteBtn" class="btn danger auto">Konto endgültig löschen</button>
+      </div>
+      <div id="deleteStatus" class="status" style="text-align:left"></div>
     </div>
   </section>
 </main>
 
 <footer>© <span id="yr"></span> Humiqa GmbH · humibeam — <a href="/">humibeam.com</a></footer>
 
+<script>
+  // Theme-Toggle (geteilt über alle Seiten via localStorage)
+  (function(){
+    var t; try{t=localStorage.getItem('humibeam_theme');}catch(e){}
+    if(t==='light') document.documentElement.classList.add('light');
+    document.getElementById('themeBtn').addEventListener('click',function(){
+      var light=document.documentElement.classList.toggle('light');
+      try{localStorage.setItem('humibeam_theme',light?'light':'dark');}catch(e){}
+    });
+  })();
+  document.getElementById('yr').textContent=new Date().getFullYear();
+  if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(function(){});}
+</script>
 <script type="module" src="./app.js"></script>
-<script>document.getElementById('yr').textContent=new Date().getFullYear();</script>
 </body>
 </html>

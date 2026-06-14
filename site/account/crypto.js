@@ -43,4 +43,17 @@ export async function decryptBlob(base64, encKey) {
   return new TextDecoder().decode(plain);
 }
 
+// Gegenstück zu decryptBlob: AES-GCM "combined" (nonce(12)+ciphertext+tag(16)) → Base64.
+export async function encryptBlob(plaintext, encKey) {
+  const nonce = crypto.getRandomValues(new Uint8Array(12));
+  const key = await crypto.subtle.importKey('raw', encKey, 'AES-GCM', false, ['encrypt']);
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, key, new TextEncoder().encode(plaintext));
+  const combined = new Uint8Array(nonce.length + ct.byteLength);
+  combined.set(nonce, 0);
+  combined.set(new Uint8Array(ct), nonce.length);
+  let bin = '';
+  for (let i = 0; i < combined.length; i += 0x8000) bin += String.fromCharCode.apply(null, combined.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
 export const randomSaltHex = () => bytesToHex(crypto.getRandomValues(new Uint8Array(16)));

@@ -5,30 +5,36 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Humibeam — Betreiber-Admin</title>
 <meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#0a0c10">
+<link rel="manifest" href="/manifest.webmanifest">
 <style>
-  :root{--panel:#12151c;--line:#232936;--fg:#e8ecf3;--muted:#9aa6b8;--dim:#6b7688;
-        --accent:#5b8cff;--accent2:#7c5cff;--green:#34d399;--red:#ff6b6b;--radius:14px;}
+  :root{--bg:#0a0c10;--panel:#12151c;--line:#232936;--fg:#e8ecf3;--muted:#9aa6b8;--dim:#6b7688;
+        --accent:#5b8cff;--accent2:#7c5cff;--green:#34d399;--red:#ff6b6b;--radius:14px;--inp:#0d1017;}
+  html.light{--bg:#f3f5fa;--panel:#fff;--line:#dce1ec;--fg:#11151c;--muted:#56607a;--dim:#8a93a8;--inp:#f7f9fc;}
   *{box-sizing:border-box;margin:0;padding:0}
-  body{min-height:100vh;background:#0a0c10;color:var(--fg);
+  body{min-height:100vh;background:var(--bg);color:var(--fg);
        font:15px/1.55 -apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
   a{color:var(--accent);text-decoration:none}
-  header{border-bottom:1px solid var(--line);background:rgba(10,12,16,.8);backdrop-filter:blur(14px)}
+  header{border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--bg) 80%,transparent);backdrop-filter:blur(14px)}
   .nav{max-width:1080px;margin:0 auto;padding:0 24px;display:flex;align-items:center;gap:14px;height:58px}
-  .brand{display:flex;align-items:center;gap:10px;font-weight:700}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;color:var(--fg)}
   .brand .dot{width:10px;height:10px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2))}
   .brand .badge{font-size:11px;font-weight:800;letter-spacing:.05em;color:#1a1206;background:var(--green);border-radius:5px;padding:2px 7px}
   .nav .spacer{flex:1}
-  main{max-width:1080px;margin:0 auto;padding:36px 24px}
+  .themebtn{color:var(--muted);font-size:14px;background:transparent;border:1px solid var(--line);border-radius:9px;padding:5px 10px;cursor:pointer}
+  main{max-width:1080px;margin:0 auto;padding:34px 24px}
   .gate{max-width:420px;margin:40px auto;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:26px}
   .gate h1{font-size:20px;margin-bottom:6px}
   .gate p{color:var(--muted);font-size:14px;margin-bottom:18px}
   label{display:block;font-size:13px;color:var(--muted);margin:0 0 6px 2px}
-  input{width:100%;background:#0d1017;border:1px solid var(--line);border-radius:10px;color:var(--fg);padding:11px 13px;font-size:15px;margin-bottom:14px}
+  input[type=password],input[type=search]{width:100%;background:var(--inp);border:1px solid var(--line);border-radius:10px;color:var(--fg);padding:11px 13px;font-size:15px;margin-bottom:14px}
   input:focus{outline:none;border-color:var(--accent)}
   .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:linear-gradient(135deg,var(--accent),var(--accent2));
        color:#fff;font-weight:650;padding:11px 18px;border-radius:10px;border:0;cursor:pointer;font-size:14.5px}
   .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--fg)}
   .btn.full{width:100%}
+  .btn.xs{padding:6px 11px;font-size:12.5px}
+  .btn.del{background:transparent;border:1px solid var(--red);color:var(--red)}
   .status{margin-top:10px;font-size:13.5px;min-height:18px}
   .status.err{color:var(--red)}.status.ok{color:var(--green)}
   .dash{display:none}.dash.on{display:block}
@@ -39,8 +45,16 @@
   .stat{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px}
   .stat .k{color:var(--dim);font-size:12px;margin-bottom:6px}
   .stat .v{font-size:26px;font-weight:800;letter-spacing:-.01em}
+  .chartbox{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;margin-bottom:22px}
+  .chartbox h3{font-size:14px;color:var(--muted);font-weight:650;margin-bottom:14px}
+  .bars{display:flex;align-items:flex-end;gap:6px;height:120px}
+  .bars .col{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;justify-content:flex-end;height:100%}
+  .bars .bar{width:100%;max-width:34px;background:linear-gradient(180deg,var(--accent),var(--accent2));border-radius:5px 5px 0 0;min-height:2px;transition:height .3s}
+  .bars .lbl{font-size:10px;color:var(--dim);white-space:nowrap}
+  .bars .num{font-size:10px;color:var(--muted)}
   .toolbar{display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
-  .toolbar input{margin:0;max-width:280px}
+  .toolbar input{margin:0;max-width:260px}
+  .toolbar .chk{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:13px}
   .tablewrap{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:auto}
   table{width:100%;border-collapse:collapse;font-size:13.5px}
   th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);white-space:nowrap}
@@ -56,6 +70,7 @@
   <div class="nav">
     <a class="brand" href="/"><span class="dot"></span> humibeam <span class="badge">ADMIN</span></a>
     <div class="spacer"></div>
+    <button class="themebtn" id="themeBtn" title="Hell/Dunkel">◐</button>
     <a href="/" style="color:var(--muted);font-size:13.5px">← Website</a>
   </div>
 </header>
@@ -64,7 +79,7 @@
   <!-- GATE -->
   <section id="gate" class="gate">
     <h1>Betreiber-Admin</h1>
-    <p>Interner Bereich. Gib das Admin-Token ein, um Konto- und Sync-Statistiken zu sehen. (Token = <code>adminToken</code> aus der Sync-Server-Config.)</p>
+    <p>Interner Bereich. Gib das Admin-Token ein (= <code>adminToken</code> aus der Sync-Server-Config).</p>
     <form id="gateForm">
       <label for="adminToken">Admin-Token</label>
       <input id="adminToken" type="password" autocomplete="off" placeholder="••••••••••••" required>
@@ -77,7 +92,8 @@
   <section id="dash" class="dash">
     <div class="head">
       <h1>Übersicht</h1>
-      <div style="display:flex;gap:10px">
+      <div style="display:flex;gap:10px;align-items:center">
+        <button id="csv" class="btn ghost">CSV</button>
         <button id="refresh" class="btn ghost">Aktualisieren</button>
         <button id="lock" class="btn ghost">Sperren</button>
       </div>
@@ -89,22 +105,39 @@
       <div class="stat"><div class="k">Serverzeit</div><div id="cTime" class="v" style="font-size:14px;font-weight:650">–</div></div>
     </div>
 
+    <div class="chartbox">
+      <h3>Neue Konten (letzte 14 Tage)</h3>
+      <div id="bars" class="bars"></div>
+    </div>
+
     <div class="toolbar">
       <input id="filter" type="search" placeholder="Nach E-Mail filtern…">
+      <label class="chk"><input type="checkbox" id="autoRefresh"> Auto-Refresh (30s)</label>
       <span id="rowInfo" style="color:var(--dim);font-size:13px"></span>
     </div>
     <div class="tablewrap">
       <table>
         <thead><tr>
-          <th>E-Mail</th><th>Angelegt</th><th>Sync</th><th>Rev</th><th>Letztes Gerät</th><th>Größe</th><th>Aktualisiert</th><th>Konto-ID</th>
+          <th>E-Mail</th><th>Angelegt</th><th>Sync</th><th>Rev</th><th>Letztes Gerät</th><th>Größe</th><th>Aktualisiert</th><th>Konto-ID</th><th></th>
         </tr></thead>
         <tbody id="rows"></tbody>
       </table>
     </div>
-    <p class="note">Diese Ansicht zeigt nur Metadaten. Passwörter, Auth-Hashes, Server-Salts, Tokens und die verschlüsselten Sync-Inhalte werden vom Server bewusst nicht ausgeliefert — Zero-Knowledge bleibt gewahrt.</p>
+    <p class="note">Nur Metadaten — keine Passwörter, Hashes, Salts, Tokens oder verschlüsselte Inhalte. „Löschen“ entfernt Konto, Sync-Blob und alle Sitzungen unwiderruflich (z. B. für Test-Konten).</p>
   </section>
 </main>
 
+<script>
+  (function(){
+    var t; try{t=localStorage.getItem('humibeam_theme');}catch(e){}
+    if(t==='light') document.documentElement.classList.add('light');
+    document.getElementById('themeBtn').addEventListener('click',function(){
+      var light=document.documentElement.classList.toggle('light');
+      try{localStorage.setItem('humibeam_theme',light?'light':'dark');}catch(e){}
+    });
+  })();
+  if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(function(){});}
+</script>
 <script src="./app.js"></script>
 </body>
 </html>

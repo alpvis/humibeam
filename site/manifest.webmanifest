@@ -1,0 +1,19 @@
+{
+  "name": "humibeam",
+  "short_name": "humibeam",
+  "description": "Das macOS-Cockpit für KI-Agenten auf entfernten Servern — Konto, Remote-Support & Status.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0a0c10",
+  "theme_color": "#0a0c10",
+  "lang": "de",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Konto", "url": "/account/" },
+    { "name": "Remote-Support", "url": "/support/" },
+    { "name": "Status", "url": "/status/" }
+  ]
+}
